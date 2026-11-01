@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "CozziApp",
+    "slug": "CozziApp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "plugins": [
+      [
+        "@react-native-voice/voice",
+        {
+          "microphonePermission": "Cozzi necesita acceso al micrófono para escuchar tus comandos de cocina.",
+          "speechRecognitionPermission": "Cozzi usa el reconocimiento de voz para ejecutar tus comandos de cocina."
+        }
+      ],
+      "expo-status-bar",
+      "expo-sqlite"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
