@@ -80,6 +80,8 @@ en `package.json` son:
   la app.
 - Al crear o editar una receta propia se puede elegir **Comida** o **Postre**;
   la selección define el icono que aparece en sus filas y en el detalle.
+- El formulario de receta permite guardar tiempo de preparación, dificultad
+  (Fácil, Media o Difícil) y porciones; valida rangos razonables antes de guardar.
   Es una autenticación real pero local, pensada para funcionar sin backend.
   Cuando exista la API solo hay que cambiar el cuerpo de `signUp`, `signIn` y
   `updateUser`; las pantallas no cambian.

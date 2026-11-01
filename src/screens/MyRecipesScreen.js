@@ -11,7 +11,15 @@ import { getUserRecipes, saveUserRecipe, deleteUserRecipe } from '../services/st
 import { ROUTES } from '../navigation/routes';
 import { colors } from '../theme';
 
-const emptyForm = { title: '', category: 'Comida', ingredients: '', steps: '' };
+const emptyForm = {
+  title: '',
+  category: 'Comida',
+  time: '30',
+  difficulty: 'Fácil',
+  servings: '1',
+  ingredients: '',
+  steps: '',
+};
 const newId = () => `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 
 function parseIngredients(text) {
@@ -45,6 +53,9 @@ export default function MyRecipesScreen({ navigation }) {
     setForm({
       title: recipe.title,
       category: recipe.category === 'Postre' ? 'Postre' : 'Comida',
+      time: String(recipe.time),
+      difficulty: recipe.difficulty,
+      servings: String(recipe.servings),
       ingredients: recipe.ingredients.map((item) => `${item.name}: ${item.qty}`).join('\n'),
       steps: recipe.steps.join('\n'),
     });
@@ -62,8 +73,18 @@ export default function MyRecipesScreen({ navigation }) {
   const save = () => {
     const ingredients = parseIngredients(form.ingredients);
     const steps = form.steps.split('\n').map((step) => step.trim()).filter(Boolean);
+    const time = Number(form.time);
+    const servings = Number(form.servings);
     if (form.title.trim().length < 2) {
       setError('Escribe el nombre de la receta.');
+      return;
+    }
+    if (!Number.isInteger(time) || time < 1 || time > 1440) {
+      setError('El tiempo debe ser un número entero entre 1 y 1440 minutos.');
+      return;
+    }
+    if (!Number.isInteger(servings) || servings < 1 || servings > 100) {
+      setError('Las porciones deben ser un número entero entre 1 y 100.');
       return;
     }
     if (!ingredients.length || !steps.length) {
@@ -76,9 +97,9 @@ export default function MyRecipesScreen({ navigation }) {
         id: editingId || newId(),
         title: form.title.trim(),
         category: form.category,
-        time: 30,
-        difficulty: 'Fácil',
-        servings: 1,
+        time,
+        difficulty: form.difficulty,
+        servings,
         ingredients,
         steps,
       }, user.id);
@@ -106,7 +127,7 @@ export default function MyRecipesScreen({ navigation }) {
           key={recipe.id}
           title={recipe.title}
           category={recipe.category}
-          subtitle={`${recipe.category} · ${recipe.ingredients.length} ingredientes`}
+          subtitle={`${recipe.category} · ${recipe.difficulty} · ${recipe.time} min · ${recipe.servings} porciones`}
           titleStyle={{ color: colors.text }}
           onPress={() => navigation.navigate(ROUTES.RECIPE, { recipeId: recipe.id })}
           right={
@@ -134,6 +155,31 @@ export default function MyRecipesScreen({ navigation }) {
               />
             ))}
           </View>
+          <Text style={s.categoryLabel}>Tiempo de preparación (minutos)</Text>
+          <Input
+            placeholder="Ejemplo: 30"
+            value={form.time}
+            onChangeText={updateForm('time')}
+            keyboardType="number-pad"
+          />
+          <Text style={s.categoryLabel}>Dificultad</Text>
+          <View style={s.categories}>
+            {['Fácil', 'Media', 'Difícil'].map((difficulty) => (
+              <Chip
+                key={difficulty}
+                label={difficulty}
+                active={form.difficulty === difficulty}
+                onPress={() => updateForm('difficulty')(difficulty)}
+              />
+            ))}
+          </View>
+          <Text style={s.categoryLabel}>Porciones</Text>
+          <Input
+            placeholder="Ejemplo: 4"
+            value={form.servings}
+            onChangeText={updateForm('servings')}
+            keyboardType="number-pad"
+          />
           <Input
             placeholder={'Ingredientes (uno por línea: Arroz: 1 taza)'}
             value={form.ingredients}
