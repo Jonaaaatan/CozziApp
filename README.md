@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Cozzi — App (React Native / Expo)
 
 Asistente culinario inteligente controlado por voz. Proyecto de Frameworks y
@@ -196,3 +197,7 @@ CozziApp/
 - **Notificaciones con la app cerrada** (hoy el aviso es dentro de la app).
 - **Recuperación de contraseña**.
 - Elegir porciones desde la pantalla (hoy se hace por comando de voz/texto).
+=======
+# CozziApp
+Repositorio donde llevare todo el avance de Cozzi
+>>>>>>> c8c6e7344504b06e22a2cecaa3bb2385f826f369
