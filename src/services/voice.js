@@ -23,7 +23,7 @@ const WebRecognition =
     : null;
 
 function getNativeVoice() {
-  if (Platform.OS === 'web' || !NativeModules.Voice) return null;
+  if (Platform.OS === 'web' || !(NativeModules.RCTVoice || NativeModules.Voice)) return null;
   return require('@react-native-voice/voice').default;
 }
 
