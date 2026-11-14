@@ -45,10 +45,18 @@ export function createRecognizer({ onResult, onEnd, onError }) {
   if (!voice) return null;
 
   let finished = false;
+  let endNotified = false;
+  let cleanupTimer;
+  const notifyEnd = () => {
+    if (endNotified) return;
+    endNotified = true;
+    onEnd?.();
+  };
   const finish = () => {
     if (finished) return;
     finished = true;
-    onEnd?.();
+    clearTimeout(cleanupTimer);
+    notifyEnd();
     voice.destroy().catch((error) => onError?.(error.message));
   };
 
@@ -57,12 +65,16 @@ export function createRecognizer({ onResult, onEnd, onError }) {
       voice.onSpeechResults = (event) => {
         const result = event.value?.[0];
         if (result) onResult?.(result);
+        finish();
       };
       voice.onSpeechError = (event) => {
         onError?.(event.error?.message || event.error?.code || 'Error de reconocimiento de voz');
         finish();
       };
-      voice.onSpeechEnd = finish;
+      voice.onSpeechEnd = () => {
+        notifyEnd();
+        cleanupTimer = setTimeout(finish, 1000);
+      };
 
       try {
         await voice.start('es-MX');
