@@ -4,7 +4,12 @@
     "slug": "CozziApp",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/cozziIcon.png",
+    "splash": {
+      "image": "./assets/cozziIcon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    },
     "userInterfaceStyle": "light",
     "plugins": [
       [
@@ -16,17 +21,23 @@
       ],
       "expo-status-bar",
       "expo-sqlite",
-      "expo-notifications"
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/cozzi-notification-icon.png",
+          "largeIcon": "./assets/cozziIcon.png",
+          "color": "#C4262E"
+        }
+      ]
     ],
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/cozzi-adaptive-foreground.png",
+        "monochromeImage": "./assets/cozzi-adaptive-monochrome.png"
       },
       "permissions": [
         "android.permission.RECORD_AUDIO"
@@ -34,7 +45,7 @@
       "package": "com.anonymous.CozziApp"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/cozziIcon.png"
     }
   }
 }
