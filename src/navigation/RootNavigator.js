@@ -1,5 +1,5 @@
-import React from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import React, { useState } from 'react';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
 import { ROUTES } from './routes';
@@ -19,7 +19,8 @@ const Stack = createNativeStackNavigator();
 
 // Flujo condicional: sin sesión -> Login/Registro; con sesión -> app.
 export default function RootNavigator() {
-  const { user, loading, storageError } = useAuth();
+  const { user, loading, storageError, continueAsGuest } = useAuth();
+  const [guestError, setGuestError] = useState('');
   // Mientras se restaura la sesión guardada evitamos parpadear la pantalla de login.
   if (loading) {
     return (
@@ -32,6 +33,13 @@ export default function RootNavigator() {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: colors.bg }}>
         <Text style={{ color: colors.primary, textAlign: 'center' }}>{storageError}</Text>
+        <Pressable
+          onPress={() => continueAsGuest({ clearSavedSession: true }).catch((error) => setGuestError(error.message))}
+          style={{ marginTop: 20 }}
+        >
+          <Text style={{ color: colors.primary, fontWeight: '700' }}>Continuar sin cuenta</Text>
+        </Pressable>
+        {!!guestError && <Text style={{ color: colors.primary, marginTop: 8 }}>{guestError}</Text>}
       </View>
     );
   }

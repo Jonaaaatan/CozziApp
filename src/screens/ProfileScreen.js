@@ -29,7 +29,7 @@ export default function ProfileScreen({ navigation }) {
   return (
     <AppScreen menu>
       <View style={s.avatar} />
-      <Text style={s.name}>{user.name}</Text>
+      <Text style={s.name}>{user.isGuest ? 'Invitado' : user.name}</Text>
       <Text style={s.level}>Nivel {stats.level} — {stats.levelName}</Text>
       <View style={s.track}><View style={[s.fill, { width: `${stats.progress * 100}%` }]} /></View>
       <Text style={s.hint}>
@@ -47,11 +47,15 @@ export default function ProfileScreen({ navigation }) {
         ))}
       </View>
 
-      <SectionTitle>Alergias</SectionTitle>
-      <View style={s.row}>
-        {user.allergies.length === 0 && <Text style={s.empty}>Sin alergias registradas.</Text>}
-        {user.allergies.map((a) => <Chip key={a} label={a} active />)}
-      </View>
+      {!user.isGuest && (
+        <>
+          <SectionTitle>Alergias</SectionTitle>
+          <View style={s.row}>
+            {user.allergies.length === 0 && <Text style={s.empty}>Sin alergias registradas.</Text>}
+            {user.allergies.map((a) => <Chip key={a} label={a} active />)}
+          </View>
+        </>
+      )}
 
       <SectionTitle>Favoritos</SectionTitle>
       {!!recipesError && <Text style={s.empty}>{recipesError}</Text>}

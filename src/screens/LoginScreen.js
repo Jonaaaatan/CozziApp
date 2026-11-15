@@ -8,11 +8,23 @@ import { ROUTES } from '../navigation/routes';
 import { colors } from '../theme';
 
 export default function LoginScreen({ navigation }) {
-  const { signIn } = useAuth();
+  const { signIn, continueAsGuest } = useAuth();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
+  const enterAsGuest = async () => {
+    setError('');
+    setBusy(true);
+    try {
+      await continueAsGuest();
+    } catch (e) {
+      setError(`No se pudo iniciar como invitado: ${e.message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const submit = async () => {
     setError('');
@@ -34,6 +46,13 @@ export default function LoginScreen({ navigation }) {
       <Input placeholder="Contraseña" secureTextEntry value={password} onChangeText={setPassword} />
       {!!error && <Text style={s.error}>{error}</Text>}
       <Button title={busy ? 'Entrando…' : 'Iniciar sesión'} onPress={submit} style={{ marginTop: 8, opacity: busy ? 0.6 : 1 }} />
+      <Button
+        title="Continuar sin cuenta"
+        variant="outline"
+        onPress={enterAsGuest}
+        style={{ marginTop: 10, opacity: busy ? 0.6 : 1 }}
+      />
+      <Text style={s.guestHint}>Tus datos de invitado se guardan solo en este dispositivo.</Text>
       {/* TODO: recuperación de contraseña */}
       <Text style={s.muted}>¿Olvidaste tu contraseña?</Text>
       <Pressable onPress={() => navigation.navigate(ROUTES.REGISTER)}>
@@ -47,6 +66,7 @@ const s = StyleSheet.create({
   center: { justifyContent: 'center' },
   logo: { color: colors.primary, fontSize: 30, fontWeight: '800', textAlign: 'center', marginBottom: 28 },
   muted: { color: colors.textMuted, fontSize: 12, textAlign: 'center', marginTop: 18 },
+  guestHint: { color: colors.textMuted, fontSize: 11, textAlign: 'center', marginTop: 8 },
   error: { color: colors.primary, fontSize: 12, textAlign: 'center', marginBottom: 4 },
   link: { color: colors.primary, fontWeight: '700' },
 });

@@ -28,7 +28,7 @@ export default function RecipeDetailScreen({ route, navigation }) {
     let active = true;
     setRecipe(null);
     setLoadError('');
-    getRecipeById(recipeId)
+    getRecipeById(recipeId, user.id)
       .then((storedRecipe) => {
         if (active) {
           setRecipe(storedRecipe || recipes.find((item) => item.id === recipeId) || null);
@@ -42,7 +42,7 @@ export default function RecipeDetailScreen({ route, navigation }) {
         }
       });
     return () => { active = false; };
-  }, [recipeId]);
+  }, [recipeId, user.id]);
 
   const addIngredients = async () => {
     try {

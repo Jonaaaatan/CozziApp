@@ -40,6 +40,9 @@ export default function SearchScreen({ navigation }) {
     if (filter === 'Tipo') list.sort((a, b) => a.category.localeCompare(b.category));
     return list;
   }, [results, filter, user.allergies]);
+  const availableFilters = user.isGuest
+    ? searchFilters.filter((item) => item !== 'Alergias')
+    : searchFilters;
 
   return (
     <AppScreen menu bottomBar>
@@ -54,7 +57,7 @@ export default function SearchScreen({ navigation }) {
         />
       </View>
       <View style={s.chips}>
-        {searchFilters.map((f) => (
+        {availableFilters.map((f) => (
           <Chip key={f} label={f} active={filter === f} onPress={() => setFilter(f)} />
         ))}
       </View>

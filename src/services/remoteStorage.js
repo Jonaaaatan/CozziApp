@@ -1,4 +1,16 @@
 import { supabase } from './supabase';
+import {
+  addRecipeToShoppingList as addLocalRecipeToShoppingList,
+  clearShoppingList as clearLocalShoppingList,
+  deleteUserRecipe as deleteLocalUserRecipe,
+  GUEST_USER_ID,
+  getRecipes as getLocalRecipes,
+  getShoppingList as getLocalShoppingList,
+  getStoredRecipe,
+  getUserRecipes as getLocalUserRecipes,
+  saveUserRecipe as saveLocalUserRecipe,
+  toggleShoppingItem as toggleLocalShoppingItem,
+} from './storage';
 
 const RECIPE_COLUMNS = [
   'id',
@@ -45,6 +57,11 @@ export const getCachedRecipe = (recipeId) => recipeCache.get(recipeId) || null;
 export const clearRecipeCache = () => recipeCache.clear();
 
 export async function getRecipes(userId) {
+  if (userId === GUEST_USER_ID) {
+    const recipes = getLocalRecipes(userId);
+    cacheRecipes(recipes);
+    return recipes;
+  }
   const { data, error } = await supabase
     .from('recipes')
     .select(RECIPE_COLUMNS)
@@ -56,7 +73,12 @@ export async function getRecipes(userId) {
   return recipes;
 }
 
-export async function getRecipeById(recipeId) {
+export async function getRecipeById(recipeId, userId) {
+  if (userId === GUEST_USER_ID) {
+    const recipe = getStoredRecipe(recipeId, userId);
+    if (recipe) recipeCache.set(recipe.id, recipe);
+    return recipe;
+  }
   const { data, error } = await supabase
     .from('recipes')
     .select(RECIPE_COLUMNS)
@@ -80,6 +102,11 @@ export async function searchRecipes(query, userId) {
 }
 
 export async function getUserRecipes(userId) {
+  if (userId === GUEST_USER_ID) {
+    const recipes = getLocalUserRecipes(userId);
+    cacheRecipes(recipes);
+    return recipes;
+  }
   const { data, error } = await supabase
     .from('recipes')
     .select(RECIPE_COLUMNS)
@@ -104,6 +131,11 @@ export async function saveUserRecipe(recipe, userId) {
     tips: recipe.tips || {},
     ingredients: recipe.ingredients || [],
   };
+  if (userId === GUEST_USER_ID) {
+    const saved = saveLocalUserRecipe(payload, userId);
+    recipeCache.set(saved.id, saved);
+    return saved;
+  }
   const { error } = await supabase.rpc('save_user_recipe', { recipe_data: payload });
   if (error) throw error;
 
@@ -113,6 +145,11 @@ export async function saveUserRecipe(recipe, userId) {
 }
 
 export async function deleteUserRecipe(recipeId, userId) {
+  if (userId === GUEST_USER_ID) {
+    const deleted = deleteLocalUserRecipe(recipeId, userId);
+    recipeCache.delete(recipeId);
+    return deleted;
+  }
   const { data, error } = await supabase
     .from('recipes')
     .delete()
@@ -133,6 +170,10 @@ const categoryForIngredient = (ingredient) => {
 };
 
 export async function addRecipeToShoppingList(userId, recipe) {
+  if (userId === GUEST_USER_ID) {
+    addLocalRecipeToShoppingList(userId, recipe.id);
+    return;
+  }
   const items = recipe.ingredients.map((ingredient) => ({
     user_id: userId,
     recipe_id: recipe.id,
@@ -144,6 +185,7 @@ export async function addRecipeToShoppingList(userId, recipe) {
 }
 
 export async function getShoppingList(userId) {
+  if (userId === GUEST_USER_ID) return getLocalShoppingList(userId);
   const { data, error } = await supabase
     .from('shopping_list_items')
     .select('id,label,category,done')
@@ -155,6 +197,10 @@ export async function getShoppingList(userId) {
 }
 
 export async function toggleShoppingItem(itemId, userId, done) {
+  if (userId === GUEST_USER_ID) {
+    toggleLocalShoppingItem(itemId, userId, done);
+    return;
+  }
   const { error } = await supabase
     .from('shopping_list_items')
     .update({ done })
@@ -164,6 +210,10 @@ export async function toggleShoppingItem(itemId, userId, done) {
 }
 
 export async function clearShoppingList(userId) {
+  if (userId === GUEST_USER_ID) {
+    clearLocalShoppingList(userId);
+    return;
+  }
   const { error } = await supabase
     .from('shopping_list_items')
     .delete()

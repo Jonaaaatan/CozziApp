@@ -6,6 +6,8 @@ import { recipes as seedRecipes } from '../data/mock';
 const isWeb = Platform.OS === 'web';
 const db = isWeb ? null : SQLite.openDatabaseSync('cozzi.db');
 const WEB_DATABASE_KEY = 'cozzi:relational-db:v1';
+export const GUEST_USER_ID = 'guest-local';
+const GUEST_USER_EMAIL = 'guest@cozzi.local';
 let initialized = false;
 let webDatabase;
 
@@ -101,6 +103,36 @@ export function initializeDatabase() {
     });
   }
   initialized = true;
+}
+
+export function ensureGuestUser() {
+  initializeDatabase();
+  const createdAt = new Date().toISOString();
+  if (isWeb) {
+    if (!webDatabase.users.some((user) => user.id === GUEST_USER_ID)) {
+      webDatabase.users.push({
+        id: GUEST_USER_ID,
+        email: GUEST_USER_EMAIL,
+        name: 'Invitado',
+        password_salt: '',
+        password_hash: '',
+        allergies: '[]',
+        favorites: '[]',
+        history: '[]',
+        created_at: createdAt,
+      });
+      saveWebDatabase();
+    }
+    return;
+  }
+  db.runSync(
+    `INSERT OR IGNORE INTO users
+      (id, email, name, password_salt, password_hash, allergies, favorites, history, created_at)
+     VALUES (?, ?, 'Invitado', '', '', '[]', '[]', '[]', ?)`,
+    GUEST_USER_ID,
+    GUEST_USER_EMAIL,
+    createdAt,
+  );
 }
 
 function saveRecipeRows(recipe, ownerId = null) {
@@ -456,19 +488,28 @@ export function getShoppingList(userId) {
   ).map((item) => ({ ...item, done: Boolean(item.done) }));
 }
 
-export function toggleShoppingItem(itemId, userId) {
+export function toggleShoppingItem(itemId, userId, done) {
   initializeDatabase();
   if (isWeb) {
     const item = webDatabase.shoppingListItems.find((value) => value.id === itemId && value.user_id === userId);
-    if (item) item.done = item.done ? 0 : 1;
+    if (item) item.done = typeof done === 'boolean' ? Number(done) : item.done ? 0 : 1;
     saveWebDatabase();
     return;
   }
-  db.runSync(
-    'UPDATE shopping_list_items SET done = CASE done WHEN 0 THEN 1 ELSE 0 END WHERE id = ? AND user_id = ?',
-    itemId,
-    userId,
-  );
+  if (typeof done === 'boolean') {
+    db.runSync(
+      'UPDATE shopping_list_items SET done = ? WHERE id = ? AND user_id = ?',
+      Number(done),
+      itemId,
+      userId,
+    );
+  } else {
+    db.runSync(
+      'UPDATE shopping_list_items SET done = CASE done WHEN 0 THEN 1 ELSE 0 END WHERE id = ? AND user_id = ?',
+      itemId,
+      userId,
+    );
+  }
 }
 
 export function clearShoppingList(userId) {

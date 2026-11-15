@@ -32,7 +32,7 @@ export default function CookWithMeScreen({ route, navigation }) {
   useEffect(() => {
     let active = true;
     setRecipe(null);
-    getRecipeById(recipeId)
+    getRecipeById(recipeId, user.id)
       .then((storedRecipe) => {
         if (!active) return;
         const resolved = storedRecipe || recipes.find((item) => item.id === recipeId) || null;
@@ -48,7 +48,7 @@ export default function CookWithMeScreen({ route, navigation }) {
         if (localRecipe) cooking.startCooking(recipeId, localRecipe);
       });
     return () => { active = false; };
-  }, [recipeId]);
+  }, [recipeId, user.id]);
 
   const total = recipe?.steps.length || 1;
   const step = session?.step ?? 0;

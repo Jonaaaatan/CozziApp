@@ -1,8 +1,11 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../services/supabase';
 import { clearRecipeCache } from '../services/remoteStorage';
+import { ensureGuestUser, getJSON, GUEST_USER_ID, setJSON } from '../services/storage';
 
 const AuthContext = createContext(null);
+const GUEST_DATA_KEY = 'cozzi:guest:data';
+const GUEST_EMAIL = 'guest@cozzi.local';
 
 const normEmail = (email) => String(email || '').trim().toLowerCase();
 
@@ -35,6 +38,7 @@ async function loadUser(authUser) {
   return {
     id: authUser.id,
     email: authUser.email,
+    isGuest: false,
     name: profileResult.data.name,
     allergies: profileResult.data.allergies || [],
     favorites: favoritesResult.data.map((favorite) => favorite.recipe_id),
@@ -63,6 +67,10 @@ export function AuthProvider({ children }) {
       const currentRequest = ++request;
       setStorageError('');
       if (!session?.user) {
+        if (userRef.current?.isGuest) {
+          setLoading(false);
+          return;
+        }
         clearRecipeCache();
         setUser(null);
         setLoading(false);
@@ -111,6 +119,28 @@ export function AuthProvider({ children }) {
     loading,
     storageError,
 
+    async continueAsGuest({ clearSavedSession = false } = {}) {
+      if (clearSavedSession) {
+        const { error } = await supabase.auth.signOut({ scope: 'local' });
+        if (error) throw error;
+      }
+      ensureGuestUser();
+      const saved = await getJSON(GUEST_DATA_KEY, {});
+      const nextUser = {
+        id: GUEST_USER_ID,
+        email: GUEST_EMAIL,
+        isGuest: true,
+        name: 'Invitado',
+        allergies: [],
+        favorites: Array.isArray(saved.favorites) ? saved.favorites : [],
+        history: Array.isArray(saved.history) ? saved.history : [],
+      };
+      clearRecipeCache();
+      setStorageError('');
+      userRef.current = nextUser;
+      setUser(nextUser);
+    },
+
     async signUp({ name, email, password, confirm, allergies = [] }) {
       const validationError = validateRegister({ name, email, password, confirm });
       if (validationError) return { ok: false, error: validationError };
@@ -149,8 +179,10 @@ export function AuthProvider({ children }) {
     },
 
     async signOut() {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      if (!userRef.current?.isGuest) {
+        const { error } = await supabase.auth.signOut();
+        if (error) throw error;
+      }
       clearRecipeCache();
       userRef.current = null;
       setUser(null);
@@ -159,6 +191,7 @@ export function AuthProvider({ children }) {
     async updateUser(patch) {
       const current = userRef.current;
       if (!current) return null;
+      if (current.isGuest) return current;
       const changes = typeof patch === 'function' ? patch(current) : patch;
       const profileChanges = {};
       if (Object.prototype.hasOwnProperty.call(changes, 'name')) profileChanges.name = changes.name;
@@ -179,6 +212,16 @@ export function AuthProvider({ children }) {
       const current = userRef.current;
       if (!current) return null;
       const isFavorite = current.favorites.includes(recipeId);
+      if (current.isGuest) {
+        const favorites = isFavorite
+          ? current.favorites.filter((id) => id !== recipeId)
+          : [...current.favorites, recipeId];
+        const nextUser = { ...current, favorites };
+        await setJSON(GUEST_DATA_KEY, { favorites, history: current.history });
+        userRef.current = nextUser;
+        setUser(nextUser);
+        return nextUser;
+      }
       const request = isFavorite
         ? supabase.from('favorites').delete().eq('user_id', current.id).eq('recipe_id', recipeId)
         : supabase.from('favorites').insert({ user_id: current.id, recipe_id: recipeId });
@@ -196,6 +239,21 @@ export function AuthProvider({ children }) {
     async recordCompletion(recipe) {
       const current = userRef.current;
       if (!current) return null;
+      if (current.isGuest) {
+        const historyItem = {
+          recipeId: recipe.id,
+          title: recipe.title,
+          category: recipe.category,
+          date: new Date().toISOString(),
+          progress: 1,
+        };
+        const history = [...current.history, historyItem];
+        const nextUser = { ...current, history };
+        await setJSON(GUEST_DATA_KEY, { favorites: current.favorites, history });
+        userRef.current = nextUser;
+        setUser(nextUser);
+        return nextUser;
+      }
       const { data, error } = await supabase.from('recipe_history')
         .insert({
           user_id: current.id,

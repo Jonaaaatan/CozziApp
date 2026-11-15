@@ -19,7 +19,7 @@ const items = [
 // Menú lateral del botón hamburguesa (sin dependencias nativas extra).
 export default function SideMenu({ visible, onClose }) {
   const nav = useNavigation();
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
   const go = (route) => { onClose(); nav.navigate(route); };
   const closeSession = async () => {
     try {
@@ -41,7 +41,9 @@ export default function SideMenu({ visible, onClose }) {
             </Pressable>
           ))}
           <Pressable onPress={closeSession} style={[s.item, { marginTop: 24 }]}>
-            <Text style={[s.itemText, { color: colors.textMuted }]}>Cerrar sesión</Text>
+            <Text style={[s.itemText, { color: colors.textMuted }]}>
+              {user.isGuest ? 'Iniciar sesión o crear cuenta' : 'Cerrar sesión'}
+            </Text>
           </Pressable>
         </SafeAreaView>
         <Pressable style={s.backdrop} onPress={onClose} />

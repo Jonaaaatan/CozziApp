@@ -68,6 +68,10 @@ Project URL y la publishable key. `.env.local` no se debe subir al repositorio.
 ### Backend Supabase — `src/services/supabase.js`, `src/context/AuthContext.js`
 - **Registro e inicio de sesión** usan Supabase Auth. El perfil, las alergias,
   los favoritos y el historial se consultan y guardan en Supabase.
+- Puedes continuar como **invitado** sin crear una cuenta. El catálogo, las
+  recetas propias, los favoritos, el historial, las compras y la cocina se
+  guardan localmente en ese dispositivo; no se sincronizan con Supabase ni con
+  una cuenta. El perfil de invitado es de solo lectura y no incluye alergias.
 - La sesión persiste con AsyncStorage en iOS/Android y el almacenamiento web
   del navegador.
 - El catálogo, las recetas propias y la lista de compras usan tablas remotas con
