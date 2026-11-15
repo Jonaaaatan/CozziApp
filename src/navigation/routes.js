@@ -2,6 +2,8 @@ export const ROUTES = {
   // Auth
   LOGIN: 'Login',
   REGISTER: 'Register',
+  FORGOT_PASSWORD: 'ForgotPassword',
+  RESET_PASSWORD: 'ResetPassword',
   // App
   HOME: 'Home',
   SEARCH: 'Search',

@@ -212,7 +212,6 @@ CozziApp/
   historial y listas de compras que existían antes de Supabase permanecen en el
   almacenamiento local y no se transfieren automáticamente. Las contraseñas no
   se migran; las personas deben crear una cuenta Supabase.
-- **Recuperación de contraseña**.
 
 ## 7. Configuración de Supabase
 
@@ -236,3 +235,9 @@ correo no puede acceder a ese servidor. El enlace puede confirmar la cuenta y
 después mostrar `ERR_CONNECTION_REFUSED` al intentar redirigir; verifica en
 **Authentication → Users** que el correo aparezca confirmado. Las sesiones de
 cocina y temporizadores permanecen locales.
+
+Para recuperar contraseñas, agrega `cozzi://reset-password` a **Authentication
+→ URL Configuration → Redirect URLs**. En desarrollo web permite también
+`http://localhost:8081/**`; en producción agrega el origen web correspondiente.
+El esquema `cozzi` está declarado en `app.json`, por lo que cambiarlo requiere
+recompilar la aplicación nativa.

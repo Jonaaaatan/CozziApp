@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Linking, Platform } from 'react-native';
 import { supabase } from '../services/supabase';
 import { clearRecipeCache } from '../services/remoteStorage';
 import { ensureGuestUser, getJSON, GUEST_USER_ID, setJSON } from '../services/storage';
@@ -8,6 +9,24 @@ const GUEST_DATA_KEY = 'cozzi:guest:data';
 const GUEST_EMAIL = 'guest@cozzi.local';
 
 const normEmail = (email) => String(email || '').trim().toLowerCase();
+const recoveryLinkParams = (url) => {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+
+  const params = new URLSearchParams(parsed.search);
+  new URLSearchParams(parsed.hash.replace(/^#/, '')).forEach((value, key) => {
+    if (!params.has(key)) params.set(key, value);
+  });
+  const isRecoveryLink = parsed.hostname === 'reset-password'
+    || parsed.pathname.endsWith('/reset-password')
+    || params.get('reset_password') === '1'
+    || params.get('type') === 'recovery';
+  return isRecoveryLink ? params : null;
+};
 
 export function validateRegister({ name, email, password, confirm }) {
   if (String(name || '').trim().length < 2) return 'Escribe tu nombre completo.';
@@ -56,6 +75,8 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [storageError, setStorageError] = useState('');
+  const [passwordRecoveryStatus, setPasswordRecoveryStatus] = useState('idle');
+  const [passwordRecoveryError, setPasswordRecoveryError] = useState('');
   const userRef = useRef(null);
   userRef.current = user;
 
@@ -90,7 +111,11 @@ export function AuthProvider({ children }) {
       }
     };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setPasswordRecoveryError('');
+        setPasswordRecoveryStatus('ready');
+      }
       setTimeout(() => {
         if (active) void syncSession(session);
       }, 0);
@@ -114,10 +139,86 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    const handledUrls = new Set();
+    const handleRecoveryUrl = async (url) => {
+      if (!url || handledUrls.has(url)) return;
+      const params = recoveryLinkParams(url);
+      if (!params) return;
+      handledUrls.add(url);
+      setPasswordRecoveryError('');
+      setPasswordRecoveryStatus('processing');
+
+      try {
+        const linkError = params.get('error_description') || params.get('error');
+        if (linkError) throw new Error(linkError);
+
+        if (Platform.OS !== 'web') {
+          const code = params.get('code');
+          const accessToken = params.get('access_token');
+          const refreshToken = params.get('refresh_token');
+          if (code) {
+            const { error } = await supabase.auth.exchangeCodeForSession(code);
+            if (error) throw error;
+          } else if (accessToken && refreshToken) {
+            const { error } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+            if (error) throw error;
+          } else {
+            throw new Error('El enlace de recuperación no es válido o ya venció.');
+          }
+        }
+
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        if (!data.session) throw new Error('El enlace de recuperación no es válido o ya venció.');
+
+        if (active) {
+          setPasswordRecoveryError('');
+          setPasswordRecoveryStatus('ready');
+        }
+        if (Platform.OS === 'web') {
+          window.history.replaceState({}, '', window.location.pathname);
+        }
+      } catch (error) {
+        if (active) {
+          setPasswordRecoveryError(error.message);
+          setPasswordRecoveryStatus('error');
+        }
+      }
+    };
+
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      void handleRecoveryUrl(url);
+    });
+    if (Platform.OS === 'web') {
+      void handleRecoveryUrl(window.location.href);
+    } else {
+      Linking.getInitialURL()
+        .then(handleRecoveryUrl)
+        .catch((error) => {
+          if (active) {
+            setPasswordRecoveryError(error.message);
+            setPasswordRecoveryStatus('error');
+          }
+        });
+    }
+
+    return () => {
+      active = false;
+      subscription.remove();
+    };
+  }, []);
+
   const value = useMemo(() => ({
     user,
     loading,
     storageError,
+    passwordRecoveryStatus,
+    passwordRecoveryError,
 
     async continueAsGuest({ clearSavedSession = false } = {}) {
       if (clearSavedSession) {
@@ -178,6 +279,37 @@ export function AuthProvider({ children }) {
       return { ok: true };
     },
 
+    async requestPasswordReset(email) {
+      const key = normEmail(email);
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(key)) {
+        return { ok: false, error: 'Escribe un correo válido.' };
+      }
+
+      const redirectTo = Platform.OS === 'web'
+        ? `${window.location.origin}/?reset_password=1`
+        : 'cozzi://reset-password';
+      const { error } = await supabase.auth.resetPasswordForEmail(key, { redirectTo });
+      if (error) return { ok: false, error: error.message };
+      return { ok: true };
+    },
+
+    async updatePassword(password) {
+      if (passwordRecoveryStatus !== 'ready') {
+        throw new Error('Abre primero el enlace de recuperación enviado a tu correo.');
+      }
+      const { data, error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
+      return data;
+    },
+
+    dismissPasswordRecovery() {
+      setPasswordRecoveryError('');
+      setPasswordRecoveryStatus('idle');
+      if (Platform.OS === 'web') {
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    },
+
     async signOut() {
       if (!userRef.current?.isGuest) {
         const { error } = await supabase.auth.signOut();
@@ -186,6 +318,8 @@ export function AuthProvider({ children }) {
       clearRecipeCache();
       userRef.current = null;
       setUser(null);
+      setPasswordRecoveryError('');
+      setPasswordRecoveryStatus('idle');
     },
 
     async updateUser(patch) {
@@ -277,7 +411,7 @@ export function AuthProvider({ children }) {
       setUser(nextUser);
       return nextUser;
     },
-  }), [user, loading, storageError]);
+  }), [user, loading, storageError, passwordRecoveryStatus, passwordRecoveryError]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -6,6 +6,8 @@ import { ROUTES } from './routes';
 import { colors } from '../theme';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
+import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
+import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 import HomeScreen from '../screens/HomeScreen';
 import SearchScreen from '../screens/SearchScreen';
 import WhatCanICookScreen from '../screens/WhatCanICookScreen';
@@ -19,8 +21,21 @@ const Stack = createNativeStackNavigator();
 
 // Flujo condicional: sin sesión -> Login/Registro; con sesión -> app.
 export default function RootNavigator() {
-  const { user, loading, storageError, continueAsGuest } = useAuth();
+  const {
+    user,
+    loading,
+    storageError,
+    passwordRecoveryStatus,
+    continueAsGuest,
+  } = useAuth();
   const [guestError, setGuestError] = useState('');
+  if (passwordRecoveryStatus !== 'idle') {
+    return (
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name={ROUTES.RESET_PASSWORD} component={ResetPasswordScreen} />
+      </Stack.Navigator>
+    );
+  }
   // Mientras se restaura la sesión guardada evitamos parpadear la pantalla de login.
   if (loading) {
     return (
@@ -60,6 +75,7 @@ export default function RootNavigator() {
         <>
           <Stack.Screen name={ROUTES.LOGIN} component={LoginScreen} />
           <Stack.Screen name={ROUTES.REGISTER} component={RegisterScreen} />
+          <Stack.Screen name={ROUTES.FORGOT_PASSWORD} component={ForgotPasswordScreen} />
         </>
       )}
     </Stack.Navigator>

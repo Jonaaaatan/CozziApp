@@ -53,8 +53,9 @@ export default function LoginScreen({ navigation }) {
         style={{ marginTop: 10, opacity: busy ? 0.6 : 1 }}
       />
       <Text style={s.guestHint}>Tus datos de invitado se guardan solo en este dispositivo.</Text>
-      {/* TODO: recuperación de contraseña */}
-      <Text style={s.muted}>¿Olvidaste tu contraseña?</Text>
+      <Pressable onPress={() => navigation.navigate(ROUTES.FORGOT_PASSWORD, { email })}>
+        <Text style={s.muted}>¿Olvidaste tu contraseña?</Text>
+      </Pressable>
       <Pressable onPress={() => navigation.navigate(ROUTES.REGISTER)}>
         <Text style={s.muted}>¿No tienes cuenta? <Text style={s.link}>Crear cuenta</Text></Text>
       </Pressable>
