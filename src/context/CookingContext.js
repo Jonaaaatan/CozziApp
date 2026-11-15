@@ -4,8 +4,10 @@ import { useAuth } from './AuthContext';
 import { getRecipe } from '../data/mock';
 import { getJSON, setJSON } from '../services/storage';
 import { getCachedRecipe } from '../services/remoteStorage';
+import { cancelTimerNotification, scheduleTimerNotification } from '../services/timerNotifications';
 import { speak } from '../services/voice';
 import { computeStats, ACHIEVEMENTS } from '../utils/ranks';
+import { notify } from '../utils/notify';
 
 // Varios platillos a la vez. Cada receta en curso es una "sesión":
 //   { recipeId, step, servings, startedAt, autoStarted, timers[] }
@@ -28,6 +30,9 @@ export function CookingProvider({ children }) {
   const [now, setNow] = useState(Date.now());
   const [alerts, setAlerts] = useState([]); // temporizadores terminados sin descartar
   const fired = useRef(new Set());
+  const scheduledNotifications = useRef(new Map());
+  const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions;
 
   // Carga las sesiones del usuario (y las limpia al cerrar sesión).
   useEffect(() => {
@@ -43,6 +48,73 @@ export function CookingProvider({ children }) {
 
   const list = useMemo(() => Object.values(sessions), [sessions]);
   const hasRunning = list.some((s) => s.timers.some((t) => !t.done));
+
+  useEffect(() => {
+    if (!loaded || Platform.OS === 'web') return;
+
+    const activeTimers = list.flatMap((session) =>
+      session.timers
+        .filter((timer) => !timer.done && timer.endsAt > Date.now())
+        .map((timer) => ({ session, timer })),
+    );
+    const activeIds = new Set(activeTimers.map(({ timer }) => timer.id));
+
+    for (const [timerId, entry] of scheduledNotifications.current) {
+      if (!activeIds.has(timerId)) {
+        scheduledNotifications.current.delete(timerId);
+        if (entry.notificationId) {
+          cancelTimerNotification(entry.notificationId)
+            .catch((error) => notify('No se pudo cancelar el aviso', error.message));
+        }
+      }
+    }
+
+    activeTimers.forEach(({ session, timer }) => {
+      if (timer.notificationId) {
+        scheduledNotifications.current.set(timer.id, { notificationId: timer.notificationId });
+        return;
+      }
+      if (scheduledNotifications.current.has(timer.id)) return;
+
+      const entry = { notificationId: null };
+      scheduledNotifications.current.set(timer.id, entry);
+      const recipeTitle = resolveRecipe(session.recipeId).title;
+      scheduleTimerNotification({ ...timer, recipeId: session.recipeId }, recipeTitle)
+        .then((notificationId) => {
+          if (!notificationId) return;
+          const currentEntry = scheduledNotifications.current.get(timer.id);
+          const currentTimer = sessionsRef.current[session.recipeId]?.timers
+            .find((item) => item.id === timer.id && !item.done);
+          if (currentEntry !== entry || !currentTimer) {
+            return cancelTimerNotification(notificationId);
+          }
+
+          entry.notificationId = notificationId;
+          setSessions((all) => {
+            const currentSession = all[session.recipeId];
+            if (!currentSession) return all;
+            return {
+              ...all,
+              [session.recipeId]: {
+                ...currentSession,
+                timers: currentSession.timers.map((item) =>
+                  item.id === timer.id ? { ...item, notificationId } : item,
+                ),
+              },
+            };
+          });
+        })
+        .catch((error) => {
+          if (scheduledNotifications.current.get(timer.id) === entry) {
+            scheduledNotifications.current.delete(timer.id);
+          }
+          notify(
+            'No se pudo programar el aviso',
+            `El temporizador seguirá funcionando mientras Cozzi esté abierta. ${error.message}`,
+          );
+        });
+    });
+  }, [list, loaded]);
 
   // Un solo reloj para todos los temporizadores de todos los platillos.
   useEffect(() => {
@@ -122,7 +194,10 @@ export function CookingProvider({ children }) {
       });
     },
 
-    setServings: (recipeId, servings) => patch(recipeId, (s) => ({ ...s, servings })),
+    setServings: (recipeId, servings) => patch(recipeId, (s) => ({
+      ...s,
+      servings: Math.max(1, Math.min(100, Math.trunc(Number(servings) || 1))),
+    })),
 
     addTimer: (recipeId, seconds, label = 'temporizador') =>
       patch(recipeId, (s) => ({ ...s, timers: [...s.timers, makeTimer(seconds, label)] })),

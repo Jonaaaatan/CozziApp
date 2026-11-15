@@ -175,6 +175,11 @@ export default function CookWithMeScreen({ route, navigation }) {
   useEffect(() => () => { recognizer.current?.abort?.(); stopSpeaking(); }, []);
 
   const scale = recipe ? (session?.servings ?? recipe.servings) / recipe.servings : 1;
+  const servings = recipe ? (session?.servings ?? recipe.servings) : 1;
+  const changeServings = (delta) => {
+    const next = Math.max(1, Math.min(100, servings + delta));
+    if (next !== servings) cooking.setServings(recipeId, next);
+  };
 
   return (
     <AppScreen back>
@@ -198,6 +203,39 @@ export default function CookWithMeScreen({ route, navigation }) {
       {!!loadError && <Text style={s.loadError}>{loadError}</Text>}
       <Text style={s.progressText}>Paso {step + 1} de {total}</Text>
       <View style={s.track}><View style={[s.fill, { width: `${((step + 1) / total) * 100}%` }]} /></View>
+
+      <View style={s.portions}>
+        <Text style={s.portionLabel}>Porciones</Text>
+        <View style={s.portionControls}>
+          <Pressable
+            accessibilityLabel="Reducir porciones"
+            disabled={servings <= 1}
+            onPress={() => changeServings(-1)}
+            style={[s.portionButton, servings <= 1 && s.portionButtonDisabled]}
+          >
+            <Text style={s.portionButtonText}>−</Text>
+          </Pressable>
+          <Text style={s.portionCount}>{servings}</Text>
+          <Pressable
+            accessibilityLabel="Aumentar porciones"
+            disabled={servings >= 100}
+            onPress={() => changeServings(1)}
+            style={[s.portionButton, servings >= 100 && s.portionButtonDisabled]}
+          >
+            <Text style={s.portionButtonText}>+</Text>
+          </Pressable>
+        </View>
+      </View>
+      {!!recipe.ingredients.length && (
+        <>
+          <SectionTitle>Ingredientes para {servings}</SectionTitle>
+          {recipe.ingredients.map((ingredient) => (
+            <Text key={ingredient.name} style={s.ingredient}>
+              {`${scaleQty(ingredient.qty, scale)} ${ingredient.name}`.trim()}
+            </Text>
+          ))}
+        </>
+      )}
 
       <Pressable style={s.card} onPress={() => readStep()}>
         <Text style={s.stepText}>{stepText}</Text>
@@ -267,6 +305,14 @@ const s = StyleSheet.create({
   progressText: { color: colors.primary, fontWeight: '700', fontSize: 12, textAlign: 'center', marginTop: 8 },
   track: { height: 8, borderRadius: 4, backgroundColor: colors.placeholder, marginTop: 8, overflow: 'hidden' },
   fill: { height: 8, backgroundColor: colors.primary },
+  portions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 },
+  portionLabel: { color: colors.text, fontSize: 13, fontWeight: '700' },
+  portionControls: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  portionButton: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  portionButtonDisabled: { opacity: 0.4 },
+  portionButtonText: { color: '#fff', fontSize: 20, fontWeight: '700', lineHeight: 24 },
+  portionCount: { minWidth: 24, color: colors.text, fontSize: 16, fontWeight: '800', textAlign: 'center' },
+  ingredient: { color: colors.text, fontSize: 12, paddingVertical: 3 },
   card: { backgroundColor: colors.peach, borderRadius: radius.md, padding: 24, minHeight: 150, justifyContent: 'center', marginTop: 24 },
   stepText: { color: colors.text, textAlign: 'center', fontSize: 15, lineHeight: 22 },
   readHint: { color: colors.textMuted, textAlign: 'center', fontSize: 10, marginTop: 10 },

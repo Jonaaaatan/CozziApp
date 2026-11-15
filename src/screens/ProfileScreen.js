@@ -1,19 +1,26 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import AppScreen from '../components/AppScreen';
+import Button from '../components/Button';
 import Chip from '../components/Chip';
+import Input from '../components/Input';
 import SectionTitle from '../components/SectionTitle';
 import { useAuth } from '../context/AuthContext';
-import { getRecipe } from '../data/mock';
+import { allergyOptions, getRecipe } from '../data/mock';
 import { getCachedRecipe, getRecipes } from '../services/remoteStorage';
 import { computeStats } from '../utils/ranks';
 import { ROUTES } from '../navigation/routes';
 import { colors, radius } from '../theme';
 
 export default function ProfileScreen({ navigation }) {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const [recipes, setRecipes] = useState([]);
   const [recipesError, setRecipesError] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(user.name);
+  const [allergies, setAllergies] = useState(user.allergies);
+  const [profileError, setProfileError] = useState('');
+  const [saving, setSaving] = useState(false);
   useEffect(() => {
     let active = true;
     getRecipes(user.id)
@@ -25,11 +32,75 @@ export default function ProfileScreen({ navigation }) {
   // Nivel, progreso y logros salen del historial de recetas completadas.
   const stats = computeStats(user.history);
   const recipeById = new Map(recipes.map((recipe) => [recipe.id, recipe]));
+  const beginEdit = () => {
+    setName(user.name);
+    setAllergies(user.allergies);
+    setProfileError('');
+    setEditing(true);
+  };
+  const toggleAllergy = (allergy) => {
+    setAllergies((selected) => selected.includes(allergy)
+      ? selected.filter((item) => item !== allergy)
+      : [...selected, allergy]);
+  };
+  const saveProfile = async () => {
+    if (name.trim().length < 2) {
+      setProfileError('Escribe un nombre de al menos 2 caracteres.');
+      return;
+    }
+    setSaving(true);
+    setProfileError('');
+    try {
+      await updateUser({ name: name.trim(), allergies });
+      setEditing(false);
+    } catch (error) {
+      setProfileError(`No se pudo guardar el perfil: ${error.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <AppScreen menu>
       <View style={s.avatar} />
       <Text style={s.name}>{user.isGuest ? 'Invitado' : user.name}</Text>
+      {!user.isGuest && !editing && (
+        <Button title="Editar perfil" variant="outline" onPress={beginEdit} style={s.editButton} />
+      )}
+      {!user.isGuest && editing && (
+        <View style={s.editor}>
+          <SectionTitle>Editar perfil</SectionTitle>
+          <Input
+            placeholder="Nombre"
+            autoCapitalize="words"
+            value={name}
+            onChangeText={setName}
+          />
+          <SectionTitle>Alergias</SectionTitle>
+          <View style={s.row}>
+            {allergyOptions.map((allergy) => (
+              <Chip
+                key={allergy}
+                label={allergy}
+                active={allergies.includes(allergy)}
+                onPress={() => toggleAllergy(allergy)}
+              />
+            ))}
+          </View>
+          {!!profileError && <Text style={s.error}>{profileError}</Text>}
+          <Button
+            title={saving ? 'Guardando…' : 'Guardar perfil'}
+            onPress={() => { if (!saving) saveProfile(); }}
+            style={{ marginTop: 12, opacity: saving ? 0.6 : 1 }}
+          />
+          <Button
+            title="Cancelar"
+            variant="outline"
+            onPress={() => { setEditing(false); setProfileError(''); }}
+            style={{ marginTop: 8 }}
+          />
+        </View>
+      )}
       <Text style={s.level}>Nivel {stats.level} — {stats.levelName}</Text>
       <View style={s.track}><View style={[s.fill, { width: `${stats.progress * 100}%` }]} /></View>
       <Text style={s.hint}>
@@ -47,7 +118,7 @@ export default function ProfileScreen({ navigation }) {
         ))}
       </View>
 
-      {!user.isGuest && (
+      {!user.isGuest && !editing && (
         <>
           <SectionTitle>Alergias</SectionTitle>
           <View style={s.row}>
@@ -88,6 +159,9 @@ const s = StyleSheet.create({
   track: { height: 8, borderRadius: 4, backgroundColor: colors.placeholder, overflow: 'hidden' },
   fill: { height: 8, backgroundColor: colors.accent },
   hint: { textAlign: 'center', color: colors.textMuted, fontSize: 11, marginTop: 6 },
+  editButton: { width: '100%', marginTop: 12 },
+  editor: { marginTop: 16 },
+  error: { color: colors.primary, fontSize: 12, marginTop: 8 },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   badgeWrap: { width: 70, alignItems: 'center' },
   badge: { width: 54, height: 54, borderRadius: 27, backgroundColor: colors.placeholder },

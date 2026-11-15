@@ -43,6 +43,7 @@ en `package.json` son:
 | `expo-sqlite` | Almacenamiento local anterior, conservado para una futura migración |
 | `@react-native-async-storage/async-storage` | Sesión de Supabase y sesiones locales de cocina |
 | `expo-speech` | Leer los pasos en voz alta |
+| `expo-notifications` | Avisos locales de temporizadores en segundo plano |
 | `@supabase/supabase-js`, `react-native-url-polyfill` | Cliente del backend Supabase |
 
 > Si Expo Go te pide otra versión de algún paquete, ejecuta
@@ -87,6 +88,13 @@ Project URL y la publishable key. `.env.local` no se debe subir al repositorio.
   la selección define el icono que aparece en sus filas y en el detalle.
 - El formulario de receta permite guardar tiempo de preparación, dificultad
   (Fácil, Media o Difícil) y porciones; valida rangos razonables antes de guardar.
+- El perfil permite editar el nombre y las alergias de cuentas registradas.
+- En "Cocina conmigo" se ajustan las porciones con controles en pantalla y se
+  muestran las cantidades recalculadas.
+- Los temporizadores programan una notificación local para que el dispositivo
+  avise aunque Cozzi esté en segundo plano o la pantalla esté bloqueada. Requiere
+  permiso de notificaciones; Android puede retrasar avisos según sus ajustes de
+  batería. En web el aviso solo funciona mientras la pestaña está abierta.
 
 ### Varios platillos al mismo tiempo — `src/context/CookingContext.js`
 - Cada receta en curso es una **sesión** con su propio paso, porciones y
@@ -169,6 +177,7 @@ CozziApp/
     │   └── CookingContext.js   # NUEVO: platillos simultáneos y temporizadores
     ├── services/               # NUEVO
     │   ├── storage.js          # Esquema SQLite, consultas y persistencia auxiliar
+    │   ├── timerNotifications.js # Avisos locales para temporizadores móviles
     │   └── voice.js            # Leer en voz alta y reconocimiento de voz
     ├── utils/                  # NUEVO
     │   ├── voiceCommands.js    # Frase -> comando
@@ -196,13 +205,14 @@ CozziApp/
 
 - **Reconocimiento de voz nativo**: en Android/iOS requiere un development
   build; Expo Go no incluye el módulo nativo.
+- **Notificaciones en Android/iOS**: después de instalar la nueva dependencia,
+  genera e instala un development build para incluir el módulo nativo. Acepta el
+  permiso de notificaciones cuando Cozzi lo solicite.
 - **Migración de datos locales pendiente**: cuentas, recetas propias, favoritos,
   historial y listas de compras que existían antes de Supabase permanecen en el
   almacenamiento local y no se transfieren automáticamente. Las contraseñas no
   se migran; las personas deben crear una cuenta Supabase.
-- **Notificaciones con la app cerrada** (hoy el aviso es dentro de la app).
 - **Recuperación de contraseña**.
-- Elegir porciones desde la pantalla (hoy se hace por comando de voz/texto).
 
 ## 7. Configuración de Supabase
 
