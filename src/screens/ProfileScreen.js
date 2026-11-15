@@ -1,19 +1,30 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import AppScreen from '../components/AppScreen';
 import Chip from '../components/Chip';
 import SectionTitle from '../components/SectionTitle';
 import { useAuth } from '../context/AuthContext';
 import { getRecipe } from '../data/mock';
-import { getStoredRecipe } from '../services/storage';
+import { getCachedRecipe, getRecipes } from '../services/remoteStorage';
 import { computeStats } from '../utils/ranks';
 import { ROUTES } from '../navigation/routes';
 import { colors, radius } from '../theme';
 
 export default function ProfileScreen({ navigation }) {
   const { user } = useAuth();
+  const [recipes, setRecipes] = useState([]);
+  const [recipesError, setRecipesError] = useState('');
+  useEffect(() => {
+    let active = true;
+    getRecipes(user.id)
+      .then((loadedRecipes) => { if (active) { setRecipes(loadedRecipes); setRecipesError(''); } })
+      .catch((error) => { if (active) setRecipesError(`No se pudieron cargar las recetas: ${error.message}`); });
+    return () => { active = false; };
+  }, [user.id]);
+
   // Nivel, progreso y logros salen del historial de recetas completadas.
   const stats = computeStats(user.history);
+  const recipeById = new Map(recipes.map((recipe) => [recipe.id, recipe]));
 
   return (
     <AppScreen menu>
@@ -43,11 +54,14 @@ export default function ProfileScreen({ navigation }) {
       </View>
 
       <SectionTitle>Favoritos</SectionTitle>
+      {!!recipesError && <Text style={s.empty}>{recipesError}</Text>}
       <View style={s.row}>
         {user.favorites.length === 0 && <Text style={s.empty}>Toca el corazón de una receta para guardarla aquí.</Text>}
         {user.favorites.map((f) => (
           <Pressable key={f} style={s.fav} onPress={() => navigation.navigate(ROUTES.RECIPE, { recipeId: f })}>
-            <Text style={s.favText} numberOfLines={3}>{(getStoredRecipe(f, user.id) || getRecipe(f)).title}</Text>
+            <Text style={s.favText} numberOfLines={3}>
+              {(recipeById.get(f) || getCachedRecipe(f) || getRecipe(f)).title}
+            </Text>
           </Pressable>
         ))}
       </View>

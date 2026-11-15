@@ -2,7 +2,8 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { Vibration, Platform } from 'react-native';
 import { useAuth } from './AuthContext';
 import { getRecipe } from '../data/mock';
-import { getJSON, getStoredRecipe, setJSON } from '../services/storage';
+import { getJSON, setJSON } from '../services/storage';
+import { getCachedRecipe } from '../services/remoteStorage';
 import { speak } from '../services/voice';
 import { computeStats, ACHIEVEMENTS } from '../utils/ranks';
 
@@ -20,7 +21,7 @@ export const formatTime = (sec) =>
 
 export function CookingProvider({ children }) {
   const { user, recordCompletion } = useAuth();
-  const resolveRecipe = (id) => getStoredRecipe(id, user?.id) || getRecipe(id);
+  const resolveRecipe = (id) => getCachedRecipe(id) || getRecipe(id);
   const email = user?.email;
   const [sessions, setSessions] = useState({});
   const [loaded, setLoaded] = useState(false);
@@ -104,10 +105,10 @@ export function CookingProvider({ children }) {
     dismissAlert: (id) => setAlerts((a) => a.filter((x) => x.id !== id)),
 
     // Empieza una receta (o retoma la que ya estaba en curso).
-    startCooking(recipeId) {
+    startCooking(recipeId, recipeOverride) {
       setSessions((all) => {
         if (all[recipeId]) return all;
-        const recipe = resolveRecipe(recipeId);
+        const recipe = recipeOverride || resolveRecipe(recipeId);
         const base = { recipeId, step: 0, servings: recipe.servings, startedAt: Date.now(), autoStarted: {}, timers: [] };
         return { ...all, [recipeId]: withAutoTimer(base, recipe, 0) };
       });

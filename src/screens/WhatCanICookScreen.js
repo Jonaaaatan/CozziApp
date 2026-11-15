@@ -4,7 +4,7 @@ import AppScreen from '../components/AppScreen';
 import CheckRow from '../components/CheckRow';
 import Button from '../components/Button';
 import SectionTitle from '../components/SectionTitle';
-import { getRecipes } from '../services/storage';
+import { getRecipes } from '../services/remoteStorage';
 import { useAuth } from '../context/AuthContext';
 import { ROUTES } from '../navigation/routes';
 import { colors, radius } from '../theme';
@@ -25,11 +25,11 @@ export default function WhatCanICookScreen({ navigation }) {
   const [recipes, setRecipes] = useState([]);
   const [error, setError] = useState('');
   useEffect(() => {
-    try {
-      setRecipes(getRecipes(user.id));
-    } catch (e) {
-      setError(`No se pudieron consultar las recetas: ${e.message}`);
-    }
+    let active = true;
+    getRecipes(user.id)
+      .then((loadedRecipes) => { if (active) { setRecipes(loadedRecipes); setError(''); } })
+      .catch((e) => { if (active) setError(`No se pudieron consultar las recetas: ${e.message}`); });
+    return () => { active = false; };
   }, [user.id]);
   const available = useMemo(
     () => text.split(',').map(normalize).filter(Boolean),

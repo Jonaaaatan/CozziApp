@@ -1,44 +1,83 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, Image, Pressable, StyleSheet } from 'react-native';
 import AppScreen from '../components/AppScreen';
 import Button from '../components/Button';
 import Chip from '../components/Chip';
 import CheckRow from '../components/CheckRow';
 import SectionTitle from '../components/SectionTitle';
-import { getRecipe } from '../data/mock';
+import { getRecipe, recipes } from '../data/mock';
 import { useAuth } from '../context/AuthContext';
 import { useCooking } from '../context/CookingContext';
 import { ROUTES } from '../navigation/routes';
-import { getStoredRecipe, addRecipeToShoppingList } from '../services/storage';
+import { addRecipeToShoppingList, getRecipeById } from '../services/remoteStorage';
 import { recipeImageForCategory } from '../utils/recipeImages';
 import { notify } from '../utils/notify';
 import { colors, radius } from '../theme';
 
 export default function RecipeDetailScreen({ route, navigation }) {
   const { user, toggleFavorite } = useAuth();
-  const recipe = getStoredRecipe(route.params?.recipeId, user.id) || getRecipe(route.params?.recipeId);
+  const recipeId = route.params?.recipeId;
+  const [recipe, setRecipe] = useState(null);
+  const [loadError, setLoadError] = useState('');
   const { sessionOf } = useCooking();
-  const fav = user.favorites.includes(recipe.id); // se guarda en el perfil del usuario
-  const cooking = !!sessionOf(recipe.id);
+  const fav = recipe ? user.favorites.includes(recipe.id) : false;
+  const cooking = recipe ? !!sessionOf(recipe.id) : false;
   const [checked, setChecked] = useState({});
 
-  const addIngredients = () => {
+  useEffect(() => {
+    let active = true;
+    setRecipe(null);
+    setLoadError('');
+    getRecipeById(recipeId)
+      .then((storedRecipe) => {
+        if (active) {
+          setRecipe(storedRecipe || recipes.find((item) => item.id === recipeId) || null);
+          setLoadError(storedRecipe ? '' : 'No se encontró esta receta.');
+        }
+      })
+      .catch((error) => {
+        if (active) {
+          setRecipe(recipes.find((item) => item.id === recipeId) || null);
+          setLoadError(`No se pudo cargar desde Supabase: ${error.message}`);
+        }
+      });
+    return () => { active = false; };
+  }, [recipeId]);
+
+  const addIngredients = async () => {
     try {
-      addRecipeToShoppingList(user.id, recipe.id);
+      await addRecipeToShoppingList(user.id, recipe);
       notify('Lista de compras', 'Se agregaron los ingredientes de la receta.');
     } catch (error) {
       notify('No se pudo agregar', error.message);
     }
   };
 
+  const changeFavorite = async () => {
+    try {
+      await toggleFavorite(recipe.id);
+    } catch (error) {
+      notify('No se pudo actualizar el favorito', error.message);
+    }
+  };
+
+  if (!recipe) {
+    return (
+      <AppScreen back>
+        <Text style={s.title}>{loadError || 'Cargando receta…'}</Text>
+      </AppScreen>
+    );
+  }
+
   return (
     <AppScreen back>
       <View style={s.photo}>
         <Image source={recipeImageForCategory(recipe.category)} style={s.photoImage} resizeMode="contain" />
-        <Pressable style={s.heart} onPress={() => toggleFavorite(recipe.id)} accessibilityLabel="Cambiar favorito">
+        <Pressable style={s.heart} onPress={changeFavorite} accessibilityLabel="Cambiar favorito">
           <Text style={{ color: colors.primary }}>{fav ? '♥' : '♡'}</Text>
         </Pressable>
       </View>
+      {!!loadError && <Text style={s.loadError}>{loadError}</Text>}
       <Text style={s.title}>{recipe.title}</Text>
       <View style={s.chips}>
         <Chip label={recipe.category === 'Postre' ? 'Postre' : 'Comida'} />
@@ -83,4 +122,5 @@ const s = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap' },
   allergen: { color: colors.primary, fontSize: 11, fontStyle: 'italic' },
   sub: { color: '#D98A00', fontSize: 11, fontStyle: 'italic' },
+  loadError: { color: colors.textMuted, fontSize: 11, marginTop: 6 },
 });

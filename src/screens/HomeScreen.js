@@ -4,7 +4,7 @@ import AppScreen from '../components/AppScreen';
 import SectionBanner from '../components/SectionBanner';
 import RecipeRow from '../components/RecipeRow';
 import { getRecipe } from '../data/mock';
-import { getRecipes, getStoredRecipe } from '../services/storage';
+import { getCachedRecipe, getRecipes } from '../services/remoteStorage';
 import { useAuth } from '../context/AuthContext';
 import { useCooking, remainingSeconds, formatTime } from '../context/CookingContext';
 import { ROUTES } from '../navigation/routes';
@@ -16,11 +16,11 @@ export default function HomeScreen({ navigation }) {
   const [recipes, setRecipes] = useState([]);
   const [error, setError] = useState('');
   useEffect(() => {
-    try {
-      setRecipes(getRecipes(user.id));
-    } catch (e) {
-      setError(`No se pudieron cargar las recetas: ${e.message}`);
-    }
+    let active = true;
+    getRecipes(user.id)
+      .then((loadedRecipes) => { if (active) { setRecipes(loadedRecipes); setError(''); } })
+      .catch((e) => { if (active) setError(`No se pudieron cargar las recetas: ${e.message}`); });
+    return () => { active = false; };
   }, [user.id]);
 
   return (
@@ -30,7 +30,7 @@ export default function HomeScreen({ navigation }) {
         <>
           <SectionBanner title="Cocinando ahora" />
           {sessions.map((s) => {
-            const r = getStoredRecipe(s.recipeId, user.id) || getRecipe(s.recipeId);
+            const r = getCachedRecipe(s.recipeId) || getRecipe(s.recipeId);
             const running = s.timers.filter((t) => !t.done).sort((a, b) => a.endsAt - b.endsAt)[0];
             const waiting = s.timers.some((t) => t.done);
             return (

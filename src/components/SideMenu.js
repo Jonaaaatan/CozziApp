@@ -5,6 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { ROUTES } from '../navigation/routes';
 import { colors } from '../theme';
+import { notify } from '../utils/notify';
 
 const items = [
   { label: 'Inicio', route: ROUTES.HOME },
@@ -20,6 +21,14 @@ export default function SideMenu({ visible, onClose }) {
   const nav = useNavigation();
   const { signOut } = useAuth();
   const go = (route) => { onClose(); nav.navigate(route); };
+  const closeSession = async () => {
+    try {
+      await signOut();
+      onClose();
+    } catch (error) {
+      notify('No se pudo cerrar sesión', error.message);
+    }
+  };
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -31,7 +40,7 @@ export default function SideMenu({ visible, onClose }) {
               <Text style={s.itemText}>{i.label}</Text>
             </Pressable>
           ))}
-          <Pressable onPress={() => { onClose(); signOut(); }} style={[s.item, { marginTop: 24 }]}>
+          <Pressable onPress={closeSession} style={[s.item, { marginTop: 24 }]}>
             <Text style={[s.itemText, { color: colors.textMuted }]}>Cerrar sesión</Text>
           </Pressable>
         </SafeAreaView>

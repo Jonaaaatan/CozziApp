@@ -5,7 +5,7 @@ import Chip from '../components/Chip';
 import RecipeRow from '../components/RecipeRow';
 import SectionTitle from '../components/SectionTitle';
 import { searchFilters } from '../data/mock';
-import { searchStoredRecipes } from '../services/storage';
+import { searchRecipes } from '../services/remoteStorage';
 import { useAuth } from '../context/AuthContext';
 import { ROUTES } from '../navigation/routes';
 import { colors, radius } from '../theme';
@@ -18,12 +18,11 @@ export default function SearchScreen({ navigation }) {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    try {
-      setResults(searchStoredRecipes(query, user.id));
-      setError('');
-    } catch (e) {
-      setError(`No se pudieron cargar las recetas: ${e.message}`);
-    }
+    let active = true;
+    searchRecipes(query, user.id)
+      .then((loadedResults) => { if (active) { setResults(loadedResults); setError(''); } })
+      .catch((e) => { if (active) setError(`No se pudieron cargar las recetas: ${e.message}`); });
+    return () => { active = false; };
   }, [query, user.id]);
   const visibleResults = useMemo(() => {
     let list = [...results];

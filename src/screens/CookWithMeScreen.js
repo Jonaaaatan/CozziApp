@@ -4,8 +4,8 @@ import AppScreen from '../components/AppScreen';
 import Button from '../components/Button';
 import Chip from '../components/Chip';
 import SectionTitle from '../components/SectionTitle';
-import { getRecipe } from '../data/mock';
-import { getStoredRecipe } from '../services/storage';
+import { getRecipe, recipes } from '../data/mock';
+import { getCachedRecipe, getRecipeById } from '../services/remoteStorage';
 import { useAuth } from '../context/AuthContext';
 import { useCooking, remainingSeconds, formatTime } from '../context/CookingContext';
 import { parseCommand } from '../utils/voiceCommands';
@@ -18,7 +18,8 @@ import { colors, radius } from '../theme';
 export default function CookWithMeScreen({ route, navigation }) {
   const { user } = useAuth();
   const recipeId = route.params?.recipeId || getRecipe().id;
-  const recipe = getStoredRecipe(recipeId, user.id) || getRecipe(recipeId);
+  const [recipe, setRecipe] = useState(getCachedRecipe(recipeId) || recipes.find((item) => item.id === recipeId) || null);
+  const [loadError, setLoadError] = useState('');
   const cooking = useCooking();
   const session = cooking.sessionOf(recipeId);
 
@@ -27,29 +28,52 @@ export default function CookWithMeScreen({ route, navigation }) {
   const [listening, setListening] = useState(false);
   const recognizer = useRef(null);
 
-  // Al entrar se crea la sesión (o se retoma la que ya estaba en curso).
-  useEffect(() => { cooking.startCooking(recipeId); }, [recipeId]);
+  // Carga la receta antes de crear la sesión para conocer sus pasos y porciones.
+  useEffect(() => {
+    let active = true;
+    setRecipe(null);
+    getRecipeById(recipeId)
+      .then((storedRecipe) => {
+        if (!active) return;
+        const resolved = storedRecipe || recipes.find((item) => item.id === recipeId) || null;
+        setRecipe(resolved);
+        setLoadError(resolved ? '' : 'No se encontró esta receta.');
+        if (resolved) cooking.startCooking(recipeId, resolved);
+      })
+      .catch((error) => {
+        if (!active) return;
+        const localRecipe = recipes.find((item) => item.id === recipeId) || null;
+        setRecipe(localRecipe);
+        setLoadError(`No se pudo cargar desde Supabase: ${error.message}`);
+        if (localRecipe) cooking.startCooking(recipeId, localRecipe);
+      });
+    return () => { active = false; };
+  }, [recipeId]);
 
-  const total = recipe.steps.length || 1;
+  const total = recipe?.steps.length || 1;
   const step = session?.step ?? 0;
-  const stepText = recipe.steps[step] ?? 'Esta receta aún no tiene pasos.';
+  const stepText = recipe?.steps[step] ?? 'Esta receta aún no tiene pasos.';
   const isLast = step >= total - 1;
   const timers = session?.timers ?? [];
   const running = timers.filter((t) => !t.done).sort((a, b) => a.endsAt - b.endsAt);
   const others = cooking.sessions.filter((x) => x.recipeId !== recipeId);
 
   const say = (text, opts) => { setReply(text); speak(text, opts); };
-  const readStep = (i = step, opts) => say(`Paso ${i + 1} de ${total}. ${recipe.steps[i]}`, opts);
+  const readStep = (i = step, opts) => say(`Paso ${i + 1} de ${total}. ${recipe?.steps[i]}`, opts);
 
   const finish = async () => {
     stopSpeaking();
-    const res = await cooking.finishCooking(recipeId);
-    const extra = [
-      res.leveledUp && `¡Subiste al nivel ${res.after.level} — ${res.after.levelName}!`,
-      ...res.newAchievements.map((a) => `Logro desbloqueado: ${a.label}`),
-    ].filter(Boolean).join('\n');
-    notify('¡Receta completada!', `Terminaste ${recipe.title}.${extra ? `\n\n${extra}` : ''}`);
-    navigation.replace(ROUTES.PROFILE);
+    try {
+      const res = await cooking.finishCooking(recipeId);
+      const extra = [
+        res.leveledUp && `¡Subiste al nivel ${res.after.level} — ${res.after.levelName}!`,
+        ...res.newAchievements.map((a) => `Logro desbloqueado: ${a.label}`),
+      ].filter(Boolean).join('\n');
+      notify('¡Receta completada!', `Terminaste ${recipe.title}.${extra ? `\n\n${extra}` : ''}`);
+      navigation.replace(ROUTES.PROFILE);
+    } catch (error) {
+      notify('No se pudo completar la receta', error.message);
+    }
   };
 
   // ── Ejecuta un comando ya interpretado (voz o texto) ────────────────────
@@ -65,7 +89,7 @@ export default function CookWithMeScreen({ route, navigation }) {
       case 'slower': return readStep(step, { rate: 0.7 });
       case 'pause': stopSpeaking(); return setReply('En pausa. Di "continuar" cuando quieras seguir.');
       case 'peek':
-        return say(isLast ? 'Ya no hay más pasos, solo falta terminar.' : `Sigue: ${recipe.steps[step + 1]}`);
+        return say(isLast ? 'Ya no hay más pasos, solo falta terminar.' : `Sigue: ${recipe?.steps[step + 1]}`);
       case 'finish':
         if (!isLast) return say('Todavía no llegas al último paso.');
         return finish();
@@ -150,7 +174,7 @@ export default function CookWithMeScreen({ route, navigation }) {
   };
   useEffect(() => () => { recognizer.current?.abort?.(); stopSpeaking(); }, []);
 
-  const scale = (session?.servings ?? recipe.servings) / recipe.servings;
+  const scale = recipe ? (session?.servings ?? recipe.servings) / recipe.servings : 1;
 
   return (
     <AppScreen back>
@@ -159,14 +183,19 @@ export default function CookWithMeScreen({ route, navigation }) {
           <Text style={s.othersLabel}>También cocinando:</Text>
           <View style={s.row}>
             {others.map((o) => (
-              <Chip key={o.recipeId} label={`${(getStoredRecipe(o.recipeId, user.id) || getRecipe(o.recipeId)).title} · ${o.step + 1}/${(getStoredRecipe(o.recipeId, user.id) || getRecipe(o.recipeId)).steps.length}`}
+                <Chip key={o.recipeId} label={`${(getCachedRecipe(o.recipeId) || getRecipe(o.recipeId)).title} · ${o.step + 1}/${(getCachedRecipe(o.recipeId) || getRecipe(o.recipeId)).steps.length}`}
                 onPress={() => navigation.setParams({ recipeId: o.recipeId })} />
             ))}
           </View>
         </View>
       )}
 
+      {!recipe ? (
+        <Text style={s.recipeName}>{loadError || 'Cargando receta…'}</Text>
+      ) : (
+      <>
       <Text style={s.recipeName}>{recipe.title}</Text>
+      {!!loadError && <Text style={s.loadError}>{loadError}</Text>}
       <Text style={s.progressText}>Paso {step + 1} de {total}</Text>
       <View style={s.track}><View style={[s.fill, { width: `${((step + 1) / total) * 100}%` }]} /></View>
 
@@ -223,6 +252,8 @@ export default function CookWithMeScreen({ route, navigation }) {
       <Pressable onPress={() => { cooking.abandon(recipeId); navigation.navigate(ROUTES.HOME); }}>
         <Text style={s.abandon}>Dejar de cocinar esta receta</Text>
       </Pressable>
+      </>
+      )}
     </AppScreen>
   );
 }
@@ -232,6 +263,7 @@ const s = StyleSheet.create({
   othersLabel: { color: colors.textMuted, fontSize: 11, marginBottom: 6 },
   row: { flexDirection: 'row', flexWrap: 'wrap' },
   recipeName: { color: colors.text, fontWeight: '800', fontSize: 16, textAlign: 'center', marginTop: 8 },
+  loadError: { color: colors.textMuted, fontSize: 11, textAlign: 'center', marginTop: 4 },
   progressText: { color: colors.primary, fontWeight: '700', fontSize: 12, textAlign: 'center', marginTop: 8 },
   track: { height: 8, borderRadius: 4, backgroundColor: colors.placeholder, marginTop: 8, overflow: 'hidden' },
   fill: { height: 8, backgroundColor: colors.primary },

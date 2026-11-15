@@ -12,6 +12,7 @@ import { colors } from '../theme';
 export default function RegisterScreen({ navigation }) {
   const { signUp } = useAuth();
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '' });
   const [allergies, setAllergies] = useState([]);
@@ -20,10 +21,14 @@ export default function RegisterScreen({ navigation }) {
 
   const submit = async () => {
     setError('');
+    setNotice('');
     setBusy(true);
     try {
       const res = await signUp({ ...form, allergies });
       if (!res.ok) setError(res.error);
+      else if (res.requiresEmailConfirmation) {
+        setNotice('Revisa tu correo para confirmar la cuenta antes de iniciar sesión.');
+      }
     } catch (e) {
       setError(`No se pudo crear la cuenta: ${e.message}`);
     } finally {
@@ -45,6 +50,7 @@ export default function RegisterScreen({ navigation }) {
         ))}
       </View>
       {!!error && <Text style={s.error}>{error}</Text>}
+      {!!notice && <Text style={s.notice}>{notice}</Text>}
       <Button title={busy ? 'Creando cuenta…' : 'Registrarme'} onPress={submit} style={{ marginTop: 8, opacity: busy ? 0.6 : 1 }} />
     </AppScreen>
   );
@@ -53,5 +59,6 @@ export default function RegisterScreen({ navigation }) {
 const s = StyleSheet.create({
   title: { color: colors.primary, fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 16 },
   error: { color: colors.primary, fontSize: 12, textAlign: 'center', marginTop: 8 },
+  notice: { color: colors.success, fontSize: 12, textAlign: 'center', marginTop: 8 },
   chips: { flexDirection: 'row', flexWrap: 'wrap' },
 });

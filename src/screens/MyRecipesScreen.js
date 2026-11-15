@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Text, Pressable, View, StyleSheet } from 'react-native';
 import AppScreen from '../components/AppScreen';
 import RecipeRow from '../components/RecipeRow';
@@ -7,7 +7,7 @@ import Chip from '../components/Chip';
 import Input from '../components/Input';
 import SectionTitle from '../components/SectionTitle';
 import { useAuth } from '../context/AuthContext';
-import { getUserRecipes, saveUserRecipe, deleteUserRecipe } from '../services/storage';
+import { getUserRecipes, saveUserRecipe, deleteUserRecipe } from '../services/remoteStorage';
 import { ROUTES } from '../navigation/routes';
 import { colors } from '../theme';
 
@@ -37,14 +37,16 @@ export default function MyRecipesScreen({ navigation }) {
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState('');
 
-  const reload = () => setList(getUserRecipes(user.id));
-  useEffect(() => {
-    try {
-      reload();
-    } catch (e) {
-      setError(e.message);
-    }
+  const reload = useCallback(async () => {
+    setList(await getUserRecipes(user.id));
+    setError('');
   }, [user.id]);
+
+  useEffect(() => {
+    let active = true;
+    reload().catch((e) => { if (active) setError(e.message); });
+    return () => { active = false; };
+  }, [reload]);
 
   const updateForm = (key) => (value) => setForm((current) => ({ ...current, [key]: value }));
 
@@ -70,7 +72,7 @@ export default function MyRecipesScreen({ navigation }) {
     setError('');
   };
 
-  const save = () => {
+  const save = async () => {
     const ingredients = parseIngredients(form.ingredients);
     const steps = form.steps.split('\n').map((step) => step.trim()).filter(Boolean);
     const time = Number(form.time);
@@ -93,7 +95,7 @@ export default function MyRecipesScreen({ navigation }) {
     }
 
     try {
-      saveUserRecipe({
+      await saveUserRecipe({
         id: editingId || newId(),
         title: form.title.trim(),
         category: form.category,
@@ -103,17 +105,17 @@ export default function MyRecipesScreen({ navigation }) {
         ingredients,
         steps,
       }, user.id);
-      reload();
+      await reload();
       cancelEdit();
     } catch (e) {
       setError(`No se pudo guardar la receta: ${e.message}`);
     }
   };
 
-  const remove = (id) => {
+  const remove = async (id) => {
     try {
-      deleteUserRecipe(id, user.id);
-      reload();
+      await deleteUserRecipe(id, user.id);
+      await reload();
     } catch (e) {
       setError(`No se pudo eliminar la receta: ${e.message}`);
     }

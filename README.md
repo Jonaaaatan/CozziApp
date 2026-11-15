@@ -1,13 +1,13 @@
-<<<<<<< HEAD
 # Cozzi — App (React Native / Expo)
 
 Asistente culinario inteligente controlado por voz. Proyecto de Frameworks y
 Arquitectura de Software (UAQ), Equipo Chimichanga: Jahir, Jonatan y Shadday.
 
-Esta versión parte del esqueleto "Hello World + wireframes" y agrega: login real,
-varios platillos cocinándose a la vez, temporizadores, rangos y logros, más
-recetas y la base del modo "Cocina conmigo" por voz. **La estructura de carpetas,
-el tema y los componentes del esqueleto se conservan.**
+Esta versión parte del esqueleto "Hello World + wireframes" y agrega:
+autenticación y almacenamiento remoto con Supabase, varios platillos
+cocinándose a la vez, temporizadores, rangos y logros, más recetas y la base
+del modo "Cocina conmigo" por voz. **La estructura de carpetas, el tema y los
+componentes del esqueleto se conservan.**
 
 ---
 
@@ -40,13 +40,16 @@ en `package.json` son:
 | Paquete | Uso |
 |---|---|
 | `@react-navigation/native`, `@react-navigation/native-stack`, `react-native-screens`, `react-native-safe-area-context` | Navegación (el esqueleto las usaba pero no estaban en `package.json`) |
-| `expo-sqlite` | Persistencia relacional SQLite en Android/iOS |
-| `@react-native-async-storage/async-storage` | Guardar la sesión y las sesiones de cocina |
-| `expo-crypto` | Hash SHA-256 con sal para las contraseñas |
+| `expo-sqlite` | Almacenamiento local anterior, conservado para una futura migración |
+| `@react-native-async-storage/async-storage` | Sesión de Supabase y sesiones locales de cocina |
 | `expo-speech` | Leer los pasos en voz alta |
+| `@supabase/supabase-js`, `react-native-url-polyfill` | Cliente del backend Supabase |
 
 > Si Expo Go te pide otra versión de algún paquete, ejecuta
 > `npx expo install --fix` para alinear versiones con tu SDK.
+
+Para configurar Supabase, copia `.env.example` a `.env.local` y agrega el
+Project URL y la publishable key. `.env.local` no se debe subir al repositorio.
 
 ---
 
@@ -62,29 +65,24 @@ en `package.json` son:
 
 ## 3. Qué se implementó
 
-### Login funcional — `src/context/AuthContext.js`
-- **Registro** con validación: nombre, correo válido, contraseña de mínimo 6
-  caracteres, confirmación igual, y correo no repetido.
-- **Inicio de sesión** que verifica correo y contraseña. El mensaje de error es
-  el mismo si el correo no existe o la contraseña falla.
-- La contraseña **no se guarda en claro**: se guarda `SHA-256(sal + contraseña)`
-  con una sal aleatoria por usuario.
-- **La sesión persiste**: al cerrar y reabrir la app sigues dentro. "Cerrar
-  sesión" la borra.
-- Los favoritos (corazón en el detalle de receta) y el historial se guardan en
-  la cuenta del usuario.
-- Usuarios, recetas, ingredientes y lista de compras viven en almacenamiento
-  local relacional: **SQLite en Android/iOS** y `localStorage` en web. Las recetas
-  iniciales se cargan la primera vez; las recetas propias y la lista de compras
-  también se guardan allí. Las cuentas antiguas de AsyncStorage se migran al abrir
-  la app.
+### Backend Supabase — `src/services/supabase.js`, `src/context/AuthContext.js`
+- **Registro e inicio de sesión** usan Supabase Auth. El perfil, las alergias,
+  los favoritos y el historial se consultan y guardan en Supabase.
+- La sesión persiste con AsyncStorage en iOS/Android y el almacenamiento web
+  del navegador.
+- El catálogo, las recetas propias y la lista de compras usan tablas remotas con
+  políticas Row Level Security (RLS).
+- La URL y la publishable key se configuran en `.env.local`; nunca se incluye
+  una Secret key en la app.
+- Las migraciones SQL crean las tablas, las políticas RLS, el perfil al
+  registrarse y guardan atómicamente las recetas propias.
+- Las sesiones activas de cocina y temporizadores siguen en almacenamiento local.
+- Las cuentas locales anteriores no se convierten automáticamente en cuentas
+  Supabase; cada persona debe registrarse de nuevo.
 - Al crear o editar una receta propia se puede elegir **Comida** o **Postre**;
   la selección define el icono que aparece en sus filas y en el detalle.
 - El formulario de receta permite guardar tiempo de preparación, dificultad
   (Fácil, Media o Difícil) y porciones; valida rangos razonables antes de guardar.
-  Es una autenticación real pero local, pensada para funcionar sin backend.
-  Cuando exista la API solo hay que cambiar el cuerpo de `signUp`, `signIn` y
-  `updateUser`; las pantallas no cambian.
 
 ### Varios platillos al mismo tiempo — `src/context/CookingContext.js`
 - Cada receta en curso es una **sesión** con su propio paso, porciones y
@@ -194,12 +192,33 @@ CozziApp/
 
 - **Reconocimiento de voz nativo**: en Android/iOS requiere un development
   build; Expo Go no incluye el módulo nativo.
-- **Backend remoto**: sustituir `AuthContext` / `storage.js` para compartir
-  cuentas y datos entre dispositivos. Actualmente SQLite es local al dispositivo.
+- **Migración de datos locales pendiente**: cuentas, recetas propias, favoritos,
+  historial y listas de compras que existían antes de Supabase permanecen en el
+  almacenamiento local y no se transfieren automáticamente. Las contraseñas no
+  se migran; las personas deben crear una cuenta Supabase.
 - **Notificaciones con la app cerrada** (hoy el aviso es dentro de la app).
 - **Recuperación de contraseña**.
 - Elegir porciones desde la pantalla (hoy se hace por comando de voz/texto).
-=======
-# CozziApp
-Repositorio donde llevare todo el avance de Cozzi
->>>>>>> c8c6e7344504b06e22a2cecaa3bb2385f826f369
+
+## 7. Configuración de Supabase
+
+El proyecto usa la URL y publishable key de `.env.local`. Ejecuta las migraciones
+en orden desde el SQL Editor de Supabase:
+
+1. `supabase/migrations/20261114224400_initial_schema.sql`
+2. `supabase/migrations/20261114230500_seed_recipes.sql` (carga el catálogo y
+   crea la función transaccional para guardar recetas propias).
+
+La base de datos actual contiene tablas anteriores con nombres en español, como
+`perfiles` y `recetas`; la app consulta tablas en inglés, como `profiles` y
+`recipes`. Ejecutar estas migraciones crea el esquema esperado por Cozzi sin
+borrar las tablas en español. La primera migración también crea el perfil
+faltante de los usuarios que ya existían en Supabase Auth. Los datos guardados
+en las tablas anteriores no se copian automáticamente al nuevo esquema.
+
+Para confirmar correos, revisa **Authentication → URL Configuration** en
+Supabase: el `Site URL` no debe ser `localhost` si el dispositivo que abre el
+correo no puede acceder a ese servidor. El enlace puede confirmar la cuenta y
+después mostrar `ERR_CONNECTION_REFUSED` al intentar redirigir; verifica en
+**Authentication → Users** que el correo aparezca confirmado. Las sesiones de
+cocina y temporizadores permanecen locales.

@@ -5,36 +5,37 @@ import CheckRow from '../components/CheckRow';
 import Button from '../components/Button';
 import SectionTitle from '../components/SectionTitle';
 import { useAuth } from '../context/AuthContext';
-import { clearShoppingList, getShoppingList, toggleShoppingItem } from '../services/storage';
+import { clearShoppingList, getShoppingList, toggleShoppingItem } from '../services/remoteStorage';
 import { colors } from '../theme';
 
 export default function ShoppingListScreen() {
   const { user } = useAuth();
   const [items, setItems] = useState([]);
   const [error, setError] = useState('');
-  const reload = useCallback(() => setItems(getShoppingList(user.id)), [user.id]);
+  const reload = useCallback(async () => {
+    setItems(await getShoppingList(user.id));
+    setError('');
+  }, [user.id]);
 
   useEffect(() => {
-    try {
-      reload();
-    } catch (e) {
-      setError(`No se pudo cargar la lista: ${e.message}`);
-    }
+    let active = true;
+    reload().catch((e) => { if (active) setError(`No se pudo cargar la lista: ${e.message}`); });
+    return () => { active = false; };
   }, [reload]);
 
-  const toggle = (id) => {
+  const toggle = async (id, done) => {
     try {
-      toggleShoppingItem(id, user.id);
-      reload();
+      await toggleShoppingItem(id, user.id, done);
+      await reload();
     } catch (e) {
       setError(`No se pudo actualizar el ingrediente: ${e.message}`);
     }
   };
 
-  const clear = () => {
+  const clear = async () => {
     try {
-      clearShoppingList(user.id);
-      reload();
+      await clearShoppingList(user.id);
+      await reload();
     } catch (e) {
       setError(`No se pudo vaciar la lista: ${e.message}`);
     }
@@ -59,7 +60,7 @@ export default function ShoppingListScreen() {
               key={item.id}
               label={item.label}
               checked={item.done}
-              onPress={() => toggle(item.id)}
+              onPress={() => toggle(item.id, !item.done)}
             />
           ))}
         </View>
