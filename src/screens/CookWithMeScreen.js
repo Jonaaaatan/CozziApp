@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Pressable, TextInput, StyleSheet } from 'react-native';
+import { View, Text, Pressable, TextInput, StyleSheet, Platform } from 'react-native';
 import AppScreen from '../components/AppScreen';
 import Button from '../components/Button';
 import Chip from '../components/Chip';
@@ -12,6 +12,7 @@ import { parseCommand } from '../utils/voiceCommands';
 import { scaleQty } from '../utils/quantities';
 import { notify } from '../utils/notify';
 import { speak, stopSpeaking, createRecognizer, isRecognitionSupported } from '../services/voice';
+import useHandsFreeVoice from '../hooks/useHandsFreeVoice';
 import { ROUTES } from '../navigation/routes';
 import { colors, radius } from '../theme';
 
@@ -26,7 +27,13 @@ export default function CookWithMeScreen({ route, navigation }) {
   const [reply, setReply] = useState('');
   const [typed, setTyped] = useState('');
   const [listening, setListening] = useState(false);
+  const [handsFreeEnabled, setHandsFreeEnabled] = useState(false);
   const recognizer = useRef(null);
+  const handsFreeRef = useRef(null);
+  const handsFreeEnabledRef = useRef(false);
+  const handsFreeTogglePending = useRef(false);
+  const speechId = useRef(0);
+  handsFreeEnabledRef.current = handsFreeEnabled;
 
   // Carga la receta antes de crear la sesión para conocer sus pasos y porciones.
   useEffect(() => {
@@ -58,7 +65,32 @@ export default function CookWithMeScreen({ route, navigation }) {
   const running = timers.filter((t) => !t.done).sort((a, b) => a.endsAt - b.endsAt);
   const others = cooking.sessions.filter((x) => x.recipeId !== recipeId);
 
-  const say = (text, opts) => { setReply(text); speak(text, opts); };
+  const say = (text, opts) => {
+    setReply(text);
+    if (!handsFreeEnabledRef.current) {
+      speak(text, opts);
+      return;
+    }
+
+    const currentSpeechId = ++speechId.current;
+    const speakResponse = () => {
+      if (speechId.current !== currentSpeechId) return;
+      speak(text, {
+        ...opts,
+        onDone: () => {
+          if (speechId.current === currentSpeechId) handsFreeRef.current?.onSpeechEnd();
+        },
+      });
+    };
+    const pauseListening = handsFreeRef.current?.onSpeechStart();
+    if (pauseListening && typeof pauseListening.then === 'function') {
+      void pauseListening.then((ready) => {
+        if (ready) speakResponse();
+      });
+    } else {
+      speakResponse();
+    }
+  };
   const readStep = (i = step, opts) => say(`Paso ${i + 1} de ${total}. ${recipe?.steps[i]}`, opts);
 
   const finish = async () => {
@@ -132,6 +164,36 @@ export default function CookWithMeScreen({ route, navigation }) {
   };
   const handlerRef = useRef(run);
   handlerRef.current = run; // el reconocedor siempre llama a la versión más reciente
+  const handsFree = useHandsFreeVoice({
+    enabled: handsFreeEnabled,
+    onCommand: (text) => handlerRef.current(parseCommand(text)),
+    onReply: (text) => setReply(text),
+  });
+  handsFreeRef.current = handsFree;
+
+  const toggleHandsFree = async () => {
+    if (handsFreeTogglePending.current) return;
+    if (handsFreeEnabled) {
+      setHandsFreeEnabled(false);
+      return;
+    }
+
+    handsFreeTogglePending.current = true;
+    stopSpeaking();
+    try {
+      if (listening) {
+        const currentRecognizer = recognizer.current;
+        recognizer.current = null;
+        setListening(false);
+        await currentRecognizer?.abort();
+      }
+      setHandsFreeEnabled(true);
+    } catch (error) {
+      notify('No se pudo cerrar el micrófono', error.message);
+    } finally {
+      handsFreeTogglePending.current = false;
+    }
+  };
 
   const submitTyped = () => {
     if (!typed.trim()) return;
@@ -141,6 +203,7 @@ export default function CookWithMeScreen({ route, navigation }) {
 
   // ── Micrófono ────────────────────────────────────────────────────────────
   const toggleMic = async () => {
+    if (handsFreeEnabled) return;
     if (!isRecognitionSupported()) {
       return notify(
         'Voz no disponible aquí',
@@ -156,23 +219,46 @@ export default function CookWithMeScreen({ route, navigation }) {
       }
       return;
     }
-    recognizer.current = createRecognizer({
-      onResult: (text) => { setReply(`Escuché: "${text}"`); handlerRef.current(parseCommand(text)); },
-      onEnd: () => setListening(false),
+    let currentRecognizer;
+    currentRecognizer = createRecognizer({
+    onResult: (text) => {
+      if (handsFreeEnabledRef.current) return;
+      setReply(`Escuché: "${text}"`);
+      handlerRef.current(parseCommand(text));
+    },
+    onEnd: () => {
+      if (recognizer.current === currentRecognizer) recognizer.current = null;
+      setListening(false);
+    },
       onError: (error) => {
+      if (recognizer.current === currentRecognizer) recognizer.current = null;
         setListening(false);
         notify('No se pudo usar el micrófono', error);
       },
     });
+    if (!currentRecognizer) {
+    return notify('Voz no disponible aquí', 'No se pudo iniciar el reconocimiento de voz en este dispositivo.');
+    }
+    recognizer.current = currentRecognizer;
     setListening(true);
     try {
-      await recognizer.current?.start();
+    await currentRecognizer.start();
     } catch (error) {
+    if (recognizer.current === currentRecognizer) recognizer.current = null;
       setListening(false);
       notify('No se pudo iniciar el reconocimiento de voz', error.message);
     }
   };
-  useEffect(() => () => { recognizer.current?.abort?.(); stopSpeaking(); }, []);
+  useEffect(() => () => {
+    const currentRecognizer = recognizer.current;
+    recognizer.current = null;
+    if (currentRecognizer) {
+    currentRecognizer.abort().catch((error) => {
+      notify('No se pudo cerrar el micrófono', error.message);
+    });
+    }
+    stopSpeaking();
+  }, []);
 
   const scale = recipe ? (session?.servings ?? recipe.servings) / recipe.servings : 1;
   const servings = recipe ? (session?.servings ?? recipe.servings) : 1;
@@ -203,6 +289,33 @@ export default function CookWithMeScreen({ route, navigation }) {
       {!!loadError && <Text style={s.loadError}>{loadError}</Text>}
       <Text style={s.progressText}>Paso {step + 1} de {total}</Text>
       <View style={s.track}><View style={[s.fill, { width: `${((step + 1) / total) * 100}%` }]} /></View>
+
+      {Platform.OS === 'android' && (
+        <View style={s.handsFreePanel}>
+          <Pressable
+            accessibilityRole="switch"
+            accessibilityState={{ checked: handsFreeEnabled }}
+            onPress={toggleHandsFree}
+            style={[s.handsFreeButton, handsFreeEnabled && s.handsFreeButtonOn]}
+          >
+            <Text style={[s.handsFreeButtonText, handsFreeEnabled && s.handsFreeButtonTextOn]}>
+              {handsFreeEnabled ? 'Desactivar “Oye Cozzi”' : 'Activar “Oye Cozzi”'}
+            </Text>
+          </Pressable>
+          <Text style={s.handsFreeStatus}>
+            {handsFree.error || (
+              handsFree.status === 'starting' ? 'Preparando el reconocimiento de Android…'
+                : handsFree.status === 'wake' ? 'Micrófono en espera de “Oye Cozzi”.'
+                  : handsFree.status === 'command' ? 'Oye Cozzi detectado. Di tu instrucción.'
+                    : handsFree.status === 'speaking' ? 'Cozzi está respondiendo…'
+                      : handsFreeEnabled ? 'Iniciando escucha…' : 'El micrófono permanece apagado hasta que lo actives.'
+            )}
+          </Text>
+          <Text style={s.handsFreeNote}>
+            Repite “Oye Cozzi” antes de cada comando. Android mantiene el micrófono en espera; puede usar internet y batería.
+          </Text>
+        </View>
+      )}
 
       <View style={s.portions}>
         <Text style={s.portionLabel}>Porciones</Text>
@@ -249,7 +362,14 @@ export default function CookWithMeScreen({ route, navigation }) {
 
       <View style={s.controls}>
         <Pressable style={s.small} onPress={() => { cooking.goStep(recipeId, -1); stopSpeaking(); }}><Text style={s.icon}>⟲</Text></Pressable>
-        <Pressable style={[s.mic, listening && s.micOn]} onPress={toggleMic}><Text style={{ fontSize: 22 }}>🎤</Text></Pressable>
+        <Pressable
+          accessibilityLabel={handsFreeEnabled ? 'Micrófono controlado por Oye Cozzi' : 'Activar micrófono'}
+          disabled={handsFreeEnabled}
+          style={[s.mic, listening && s.micOn, handsFreeEnabled && s.micDisabled]}
+          onPress={toggleMic}
+        >
+          <Text style={{ fontSize: 22 }}>🎤</Text>
+        </Pressable>
         <Pressable style={s.small} onPress={() => { cooking.goStep(recipeId, 1); stopSpeaking(); }}><Text style={s.icon}>⟳</Text></Pressable>
       </View>
       {listening && <Text style={s.listening}>Escuchando…</Text>}
@@ -305,6 +425,13 @@ const s = StyleSheet.create({
   progressText: { color: colors.primary, fontWeight: '700', fontSize: 12, textAlign: 'center', marginTop: 8 },
   track: { height: 8, borderRadius: 4, backgroundColor: colors.placeholder, marginTop: 8, overflow: 'hidden' },
   fill: { height: 8, backgroundColor: colors.primary },
+  handsFreePanel: { alignItems: 'center', marginTop: 14, padding: 12, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  handsFreeButton: { borderWidth: 1.5, borderColor: colors.primary, borderRadius: radius.pill, paddingHorizontal: 16, paddingVertical: 8 },
+  handsFreeButtonOn: { backgroundColor: colors.primary },
+  handsFreeButtonText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
+  handsFreeButtonTextOn: { color: '#fff' },
+  handsFreeStatus: { color: colors.textMuted, fontSize: 11, textAlign: 'center', marginTop: 8 },
+  handsFreeNote: { color: colors.textMuted, fontSize: 10, textAlign: 'center', marginTop: 5 },
   portions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 },
   portionLabel: { color: colors.text, fontSize: 13, fontWeight: '700' },
   portionControls: { flexDirection: 'row', alignItems: 'center', gap: 14 },
@@ -324,6 +451,7 @@ const s = StyleSheet.create({
   icon: { color: colors.primary, fontSize: 18 },
   mic: { width: 50, height: 50, borderRadius: 25, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   micOn: { backgroundColor: colors.accent },
+  micDisabled: { opacity: 0.45 },
   listening: { color: colors.primary, textAlign: 'center', fontSize: 12, marginTop: 8, fontWeight: '700' },
   reply: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 12, marginTop: 14 },
   replyText: { color: colors.text, fontSize: 13, lineHeight: 19 },

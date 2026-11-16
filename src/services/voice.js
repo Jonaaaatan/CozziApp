@@ -3,12 +3,24 @@ import * as Speech from 'expo-speech';
 
 // ---- Síntesis de voz (leer en voz alta) ----------------------------------
 // expo-speech funciona en Android, iOS y web.
-export function speak(text, { rate = 1 } = {}) {
+export function speak(text, { rate = 1, onDone } = {}) {
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    onDone?.();
+  };
   try {
     Speech.stop();
-    Speech.speak(text, { language: 'es-MX', rate });
+    Speech.speak(text, {
+      language: 'es-MX',
+      rate,
+      onDone: finish,
+      onStopped: finish,
+      onError: finish,
+    });
   } catch {
-    // Sin voz disponible: el texto igualmente se muestra en pantalla.
+    finish();
   }
 }
 
@@ -46,40 +58,44 @@ export function createRecognizer({ onResult, onEnd, onError }) {
 
   let finished = false;
   let endNotified = false;
+  let resultText;
   let cleanupTimer;
   const notifyEnd = () => {
     if (endNotified) return;
     endNotified = true;
     onEnd?.();
   };
-  const finish = () => {
+  const finish = async () => {
     if (finished) return;
     finished = true;
     clearTimeout(cleanupTimer);
+    try {
+      await voice.destroy();
+    } catch (error) {
+      onError?.(error.message);
+    }
+    if (resultText) onResult?.(resultText);
     notifyEnd();
-    voice.destroy().catch((error) => onError?.(error.message));
   };
 
   return {
     start: async () => {
       voice.onSpeechResults = (event) => {
-        const result = event.value?.[0];
-        if (result) onResult?.(result);
-        finish();
+        resultText = event.value?.[0];
+        void finish();
       };
       voice.onSpeechError = (event) => {
         onError?.(event.error?.message || event.error?.code || 'Error de reconocimiento de voz');
-        finish();
+        void finish();
       };
       voice.onSpeechEnd = () => {
-        notifyEnd();
-        cleanupTimer = setTimeout(finish, 1000);
+        cleanupTimer = setTimeout(() => { void finish(); }, 1000);
       };
 
       try {
         await voice.start('es-MX');
       } catch (error) {
-        finish();
+        await finish();
         throw error;
       }
     },
@@ -88,7 +104,7 @@ export function createRecognizer({ onResult, onEnd, onError }) {
       try {
         await voice.cancel();
       } finally {
-        finish();
+        await finish();
       }
     },
   };

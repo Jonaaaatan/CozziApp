@@ -44,6 +44,7 @@ en `package.json` son:
 | `@react-native-async-storage/async-storage` | Sesión de Supabase y sesiones locales de cocina |
 | `expo-speech` | Leer los pasos en voz alta |
 | `expo-notifications` | Avisos locales de temporizadores en segundo plano |
+| `@picovoice/porcupine-react-native`, `@picovoice/react-native-voice-processor` | Detectar “Oye Cozzi” localmente en Android |
 | `@supabase/supabase-js`, `react-native-url-polyfill` | Cliente del backend Supabase |
 
 > Si Expo Go te pide otra versión de algún paquete, ejecuta
@@ -127,6 +128,13 @@ Project URL y la publishable key. `.env.local` no se debe subir al repositorio.
   Speech API. En Android/iOS usa `@react-native-voice/voice`; el permiso se
   solicita al iniciar el reconocimiento. En celular requiere un development
   build, no funciona en Expo Go.
+- **Modo manos libres Android**: opcional dentro de “Cocina conmigo”. Usa el
+  reconocedor de voz de Android en sesiones repetidas para detectar “Oye Cozzi”
+  y luego escuchar una instrucción. Puede depender de internet y consumir más
+  batería que un detector local. La escucha se detiene al salir de la pantalla,
+  minimizar la app o apagar el modo. Si una notificación interrumpe el
+  reconocimiento, Cozzi reintenta automáticamente con pausas crecientes sin
+  apagar el modo manos libres.
 - Los consejos tipo "¿cómo sé que está lista?" salen del campo `tips` de cada
   receta; los sustitutos, del campo `substitute` de cada ingrediente.
 
@@ -208,6 +216,11 @@ CozziApp/
 - **Notificaciones en Android/iOS**: después de instalar la nueva dependencia,
   genera e instala un development build para incluir el módulo nativo. Acepta el
   permiso de notificaciones cuando Cozzi lo solicite.
+- **“Oye Cozzi” en Android**: el modo manos libres usa el servicio de
+  reconocimiento de voz disponible en el dispositivo para detectar la frase y
+  procesar el comando. Según el proveedor configurado en Android, puede usar
+  internet; no es una detección local garantizada. Requiere un development build
+  con el módulo nativo de voz y el permiso del micrófono.
 - **Migración de datos locales pendiente**: cuentas, recetas propias, favoritos,
   historial y listas de compras que existían antes de Supabase permanecen en el
   almacenamiento local y no se transfieren automáticamente. Las contraseñas no
